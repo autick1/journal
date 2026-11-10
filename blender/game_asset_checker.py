@@ -170,10 +170,6 @@ def check_mesh(obj, rep):
             rep.add(FAIL, name, "Armature-модификатор без скелета")
         else:
             bones = {b.name for b in arm_mod.object.data.bones if b.use_deform}
-            groups = {g.name for g in obj.vertex_groups}
-            missing = bones - groups
-            if missing:
-                rep.add(WARN, name, f"deform-кости без весов: {len(missing)} (напр. {sorted(missing)[:5]})")
             unweighted = sum(1 for v in me.vertices
                              if not any(g.weight > 0 and obj.vertex_groups[g.group].name in bones
                                         for g in v.groups))
@@ -236,6 +232,14 @@ def check_armature(obj, rep):
                                             for m in c.modifiers)]
     if not children:
         rep.add(WARN, name, "к скелету не привязан ни один меш")
+    else:
+        # кости без весов проверяются по всему персонажу (одежда и тело — разные объекты)
+        used = {g.name for c in children for g in c.vertex_groups}
+        missing = sorted(b.name for b in deform if b.name not in used)
+        if missing:
+            rep.add(WARN, name, f"deform-кости без весов во всех мешах: {missing[:6]}")
+        else:
+            rep.add(OK, name, f"все deform-кости используются ({len(children)} мешей)")
 
 
 def main():

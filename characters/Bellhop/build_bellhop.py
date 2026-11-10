@@ -1,27 +1,41 @@
 """
-Bellhop — жуткий коридорный. Процедурная сборка игрового персонажа в Blender.
+Bellhop — жуткий коридорный. Процедурная сборка стилизованного хоррор-персонажа для игр.
 
-Создаёт:
-  * Bellhop_Mesh  — единый low-poly меш (~15–20k треугольников), 8 материалов,
-                    UV-развёртка, веса на кости
-  * Bellhop_Rig   — скелет для игр (pelvis/spine/neck/head, руки, 2 кости на палец, ноги)
-  * всё в коллекции "Bellhop" (или "07_Export", если сцена создана new_character_scene.py)
+Пайплайн (всё в одном скрипте, ~40 с на обычном ПК):
+  1. Скелет (51 кость: позвоночник, шея, голова, челюсть, руки, по 3 кости на палец, ноги).
+  2. Голова — SDF-череп: свод, затылок, челюсть, скулы, надбровье, глазницы, впалые виски
+     и щёки, щель рта с губами; кожа с морщинами, складками и шрамом; зубы по отдельности
+     (сломанный, кривой); светящиеся линзы в глазницах.
+  3. Тело — анатомия из метаболлов (рёбра, грудина, грудные, трапеции, лопатки, пресс, таз,
+     мышцы рук и ног, костлявые суставы) -> вокселизация -> QuadriFlow (лучший из нескольких
+     seed по симметрии) -> веса по мышечным областям со сглаживанием.
+  4. Кисти — пальцы с фалангами и суставами, отдельные загнутые когти.
+  5. Одежда отдельными объектами поверх раздутой анатомии + коллизия с кожей: пиджак
+     (узкая талия, квадратные плечи), брюки клёш, рубашка, воротник с вырезом; складки
+     на локтях/коленях/щиколотках, швы; кожа под одеждой удаляется.
+  6. Детали: латунные канты по краям ткани, эполеты с фаской, выточенные пуговицы,
+     шапка с фаской, изогнутым козырьком, лентами и кокардой; Weighted Normals на металле.
+  7. PBR-материалы: красная/тёмная ткань, старая латунь, металл, кожа, зубы, когти,
+     кожа обуви, светящиеся глаза (процедурная детализация + плоские значения для экспорта).
+
+Результат: коллекция "Bellhop" (или "07_Export") — 12 мешей (Body, Claws, Head, Teeth, Eyes,
+Shirt, Jacket, Pants, Shoes, Hat, Brass, Buttons) на общем скелете Bellhop_Rig.
 
 Запуск:
-  1) Blender -> вкладка Scripting -> Open -> build_bellhop.py -> Run Script
-  2) или Claude Desktop через MCP: «прочитай build_bellhop.py и выполни его в Blender»
-  3) или терминал: blender --background --python build_bellhop.py -- D:/path/Bellhop.blend
+  1) Blender -> Scripting -> Open -> build_bellhop.py -> Run Script
+  2) Claude Desktop через MCP: «прочитай build_bellhop.py и выполни его в Blender»
+  3) терминал: blender --background --python build_bellhop.py -- D:/path/Bellhop.blend
 
+SHOW_CLOTHES = False — только анатомия (проверка формы тела).
 Повторный запуск пересобирает персонажа (удаляются только объекты Bellhop_*).
-Пропорции и цвета вынесены в константы ниже — их удобно править.
 """
 
 import math
 import random
 import sys
 
-import bmesh
 import bpy
+import bmesh
 from mathutils import Matrix, Vector
 
 # ----------------------------------------------------------------- параметры
@@ -29,18 +43,27 @@ SEED = 7
 CLOTH_JITTER = 0.004            # «мятость» ткани, м
 HEAD_CENTER = Vector((0, -0.24, 2.10))
 HEAD_TILT_DEG = 18              # наклон головы вперёд
-FINGER_LEN = 0.34               # длина когтистых пальцев, м
+FINGER_LEN = 0.29               # длина пальцев без когтей, м
 
-COLORS = {
-    "Jacket": ((0.20, 0.018, 0.022, 1), 0.85, 0.0),
-    "Gold":   ((0.80, 0.52, 0.20, 1), 0.35, 1.0),
-    "Pants":  ((0.045, 0.012, 0.012, 1), 0.9, 0.0),
-    "Skin":   ((0.035, 0.012, 0.010, 1), 0.55, 0.0),
-    "Teeth":  ((0.85, 0.82, 0.75, 1), 0.35, 0.0),
-    "Shoes":  ((0.05, 0.02, 0.015, 1), 0.6, 0.0),
-    "Button": ((0.75, 0.75, 0.72, 1), 0.25, 1.0),
+# PBR-материалы: (базовый цвет, roughness, metallic) — эти значения уходят в игровой экспорт;
+# в Blender поверх них работает процедурная детализация (см. build_material).
+MATERIALS = {
+    "RedFabric":  ((0.13, 0.012, 0.016, 1), 0.82, 0.0),
+    "DarkFabric": ((0.028, 0.010, 0.010, 1), 0.88, 0.0),
+    "OldBrass":   ((0.62, 0.42, 0.17, 1), 0.42, 1.0),
+    "Metal":      ((0.72, 0.72, 0.70, 1), 0.28, 1.0),
+    "Skin":       ((0.016, 0.006, 0.005, 1), 0.5, 0.0),
+    "Teeth":      ((0.82, 0.78, 0.68, 1), 0.38, 0.0),
+    "Claws":      ((0.045, 0.030, 0.022, 1), 0.32, 0.0),
+    "Leather":    ((0.035, 0.016, 0.011, 1), 0.45, 0.0),
+    "Eyes":       ((1.0, 1.0, 1.0, 1), 0.3, 0.0),
 }
+ALIASES = {"Jacket": "RedFabric", "Gold": "OldBrass", "Pants": "DarkFabric",
+           "Shoes": "Leather", "Button": "Metal"}
 EYE_EMISSION = 25.0
+# профиль выточенной пуговицы (радиус, высота), м
+BUTTON_PROFILE = [(0.0, 0.0055), (0.004, 0.0052), (0.0072, 0.0043), (0.0094, 0.0028),
+                  (0.0108, 0.0034), (0.0118, 0.0018), (0.0118, 0.0), (0.0, 0.0)]
 
 random.seed(SEED)
 BONES = {}      # name -> (head, tail, parent)
@@ -48,24 +71,115 @@ PARTS = []      # созданные объекты-части до объеди
 
 
 # ----------------------------------------------------------------- материалы
+def _input(bsdf, *names):
+    for n in names:
+        if n in bsdf.inputs:
+            return bsdf.inputs[n]
+    return None
+
+
 def get_material(name):
+    name = ALIASES.get(name, name)
     full = f"M_Bellhop_{name}"
-    mat = bpy.data.materials.get(full) or bpy.data.materials.new(full)
-    mat.use_nodes = True if bpy.app.version < (5, 0) else mat.use_nodes
-    bsdf = mat.node_tree.nodes.get("Principled BSDF")
-    if name == "Eyes":
-        color, rough, metal = (1, 1, 1, 1), 0.3, 0.0
-    else:
-        color, rough, metal = COLORS[name]
+    mat = bpy.data.materials.get(full)
+    if mat is None:
+        mat = bpy.data.materials.new(full)
+        build_material(mat, name)
+    return mat
+
+
+def build_material(mat, name):
+    """Principled BSDF + процедурные детали: ворс и переливы ткани, патина латуни,
+    поры кожи, желтизна зубов. Плоские значения сохраняются в свойствах для экспорта."""
+    if bpy.app.version < (5, 0):
+        mat.use_nodes = True
+    nt = mat.node_tree
+    nodes, links = nt.nodes, nt.links
+    bsdf = nodes.get("Principled BSDF")
+    color, rough, metal = MATERIALS[name]
     mat.diffuse_color = color
+    mat["flat_color"], mat["flat_roughness"], mat["flat_metallic"] = list(color), rough, metal
     bsdf.inputs["Base Color"].default_value = color
     bsdf.inputs["Roughness"].default_value = rough
     bsdf.inputs["Metallic"].default_value = metal
+
     if name == "Eyes":
-        key = "Emission Color" if "Emission Color" in bsdf.inputs else "Emission"
-        bsdf.inputs[key].default_value = (1, 0.97, 0.9, 1)
+        _input(bsdf, "Emission Color", "Emission").default_value = (1, 0.97, 0.9, 1)
         bsdf.inputs["Emission Strength"].default_value = EYE_EMISSION
-    return mat
+        return
+
+    coord = nodes.new("ShaderNodeTexCoord")
+
+    def noise(scale, detail=4.0, rough_=0.6):
+        n = nodes.new("ShaderNodeTexNoise")
+        n.inputs["Scale"].default_value = scale
+        n.inputs["Detail"].default_value = detail
+        n.inputs["Roughness"].default_value = rough_
+        links.new(coord.outputs["Object"], n.inputs["Vector"])
+        return n
+
+    def ramp(src, c0, c1, p0=0.35, p1=0.65):
+        r = nodes.new("ShaderNodeValToRGB")
+        r.color_ramp.elements[0].position, r.color_ramp.elements[0].color = p0, c0
+        r.color_ramp.elements[1].position, r.color_ramp.elements[1].color = p1, c1
+        links.new(src, r.inputs["Fac"])
+        return r
+
+    def bump(height_socket, strength, distance=0.002):
+        b = nodes.new("ShaderNodeBump")
+        b.inputs["Strength"].default_value = strength
+        b.inputs["Distance"].default_value = distance
+        links.new(height_socket, b.inputs["Height"])
+        links.new(b.outputs["Normal"], bsdf.inputs["Normal"])
+
+    def scale_col(c, k):
+        return (c[0] * k, c[1] * k, c[2] * k, 1)
+
+    if name in ("RedFabric", "DarkFabric"):
+        n = noise(18.0, 6.0, 0.65)                         # потёртости и переливы ворса
+        r = ramp(n.outputs["Fac"], scale_col(color, 0.6), scale_col(color, 1.2))
+        links.new(r.outputs["Color"], bsdf.inputs["Base Color"])
+        weave = noise(900.0, 2.0, 0.5)                    # плетение ткани
+        bump(weave.outputs["Fac"], 0.25, 0.0008)
+        sheen = _input(bsdf, "Sheen Weight", "Sheen")
+        if sheen is not None:
+            sheen.default_value = 0.25                    # бархатистый отлив
+        st = _input(bsdf, "Sheen Tint")
+        if st is not None and st.type == 'RGBA':
+            st.default_value = (0.6, 0.12, 0.12, 1)
+    elif name == "OldBrass":
+        n = noise(40.0, 8.0, 0.7)                         # патина в углублениях
+        r = ramp(n.outputs["Fac"], (0.16, 0.11, 0.05, 1), color, 0.38, 0.62)
+        links.new(r.outputs["Color"], bsdf.inputs["Base Color"])
+        rr = ramp(n.outputs["Fac"], (0.75, 0.75, 0.75, 1), (0.28, 0.28, 0.28, 1), 0.38, 0.62)
+        links.new(rr.outputs["Color"], bsdf.inputs["Roughness"])
+        scratches = noise(300.0, 2.0, 0.5)
+        bump(scratches.outputs["Fac"], 0.12, 0.0005)
+    elif name == "Metal":
+        n = noise(120.0, 4.0, 0.6)
+        rr = ramp(n.outputs["Fac"], (0.2, 0.2, 0.2, 1), (0.45, 0.45, 0.45, 1))
+        links.new(rr.outputs["Color"], bsdf.inputs["Roughness"])
+    elif name == "Skin":
+        n = noise(25.0, 6.0, 0.6)
+        r = ramp(n.outputs["Fac"], scale_col(color, 0.6), (0.04, 0.014, 0.011, 1))
+        links.new(r.outputs["Color"], bsdf.inputs["Base Color"])
+        pores = noise(1400.0, 2.0, 0.5)
+        bump(pores.outputs["Fac"], 0.3, 0.0006)
+        ss = _input(bsdf, "Subsurface Weight", "Subsurface")
+        if ss is not None:
+            ss.default_value = 0.05
+    elif name == "Teeth":
+        n = noise(60.0, 4.0, 0.5)
+        r = ramp(n.outputs["Fac"], (0.62, 0.55, 0.38, 1), color, 0.3, 0.7)   # желтизна
+        links.new(r.outputs["Color"], bsdf.inputs["Base Color"])
+        ss = _input(bsdf, "Subsurface Weight", "Subsurface")
+        if ss is not None:
+            ss.default_value = 0.1
+    elif name in ("Claws", "Leather"):
+        n = noise(80.0, 5.0, 0.6)
+        rr = ramp(n.outputs["Fac"], (rough * 0.6,) * 3 + (1,), (min(1, rough * 1.5),) * 3 + (1,))
+        links.new(rr.outputs["Color"], bsdf.inputs["Roughness"])
+        bump(n.outputs["Fac"], 0.15, 0.001)
 
 
 # ----------------------------------------------------------------- геометрия
@@ -154,6 +268,128 @@ def jitter(bm, amount):
         v.co += Vector((random.uniform(-1, 1), random.uniform(-1, 1), random.uniform(-1, 1))) * amount
 
 
+def rounded_profile(thick, height, r=0.35):
+    """Сечение канта: прямоугольник со скруглёнными углами (n — наружу, u — вдоль высоты)."""
+    t, h = thick, height / 2
+    c = min(t, h) * r
+    return [(0, -h), (t - c, -h), (t, -h + c), (t, h - c), (t - c, h), (0, h)]
+
+
+def ring_band(bm, loop, up, profile, closed=True, center=None):
+    """Кант/лента вдоль петли точек: сечение profile в плоскости (наружу, up)."""
+    n = len(loop)
+    if center is None:
+        center = sum(loop, Vector()) / n
+    rings = []
+    for i, p in enumerate(loop):
+        a = loop[(i - 1) % n] if closed or i > 0 else p
+        b = loop[(i + 1) % n] if closed or i < n - 1 else p
+        tng = (b - a).normalized()
+        u = (up - up.dot(tng) * tng).normalized()
+        out = tng.cross(u)
+        if out.dot(p - center) < 0:
+            out = -out
+        rings.append([bm.verts.new(p + out * pn + u * pu) for pn, pu in profile])
+    m = len(profile)
+    count = n if closed else n - 1
+    for i in range(count):
+        ra, rb = rings[i], rings[(i + 1) % n]
+        for j in range(m - 1):
+            bm.faces.new((ra[j], ra[j + 1], rb[j + 1], rb[j]))
+    if closed:                                     # закрыть внутреннюю сторону ленты
+        for i in range(n):
+            ra, rb = rings[i], rings[(i + 1) % n]
+            bm.faces.new((ra[m - 1], ra[0], rb[0], rb[m - 1]))
+    else:
+        for ring in (rings[0], rings[-1]):
+            bm.faces.new(ring)
+    return bm
+
+
+def boundary_loops(obj):
+    """Упорядоченные петли граничных рёбер меша (края подола, манжет)."""
+    bm = bmesh.new()
+    bm.from_mesh(obj.data)
+    edges = [e for e in bm.edges if e.is_boundary]
+    adj = {}
+    for e in edges:
+        a, b = e.verts
+        adj.setdefault(a.index, []).append(b.index)
+        adj.setdefault(b.index, []).append(a.index)
+    co = {v.index: v.co.copy() for v in bm.verts}
+    bm.free()
+    loops, seen = [], set()
+    for start in adj:
+        if start in seen:
+            continue
+        loop, prev, cur = [start], None, start
+        seen.add(start)
+        while True:
+            nxt = [x for x in adj[cur] if x != prev and x not in seen]
+            if not nxt:
+                break
+            prev, cur = cur, nxt[0]
+            seen.add(cur)
+            loop.append(cur)
+        if len(loop) > 8:
+            loops.append([co[i] for i in loop])
+    return loops
+
+
+def smooth_loop(pts, iters=3):
+    for _ in range(iters):
+        n = len(pts)
+        pts = [(pts[i - 1] + pts[i] * 2 + pts[(i + 1) % n]) / 4 for i in range(n)]
+    return pts
+
+
+def resample_loop(pts, step):
+    n = len(pts)
+    total = sum((pts[(i + 1) % n] - pts[i]).length for i in range(n))
+    count = max(12, int(total / step))
+    seg = [(pts[(i + 1) % n] - pts[i]).length for i in range(n)]
+    out, i, acc = [], 0, 0.0
+    for k in range(count):
+        target = k * total / count
+        while acc + seg[i] < target:
+            acc += seg[i]
+            i = (i + 1) % n
+        t = (target - acc) / max(seg[i], 1e-9)
+        out.append(pts[i].lerp(pts[(i + 1) % n], t))
+    return out
+
+
+def bevel_sharp(bm, offset, segments=2, angle_deg=35):
+    """Фаска на острых рёбрах (аналог модификатора Bevel с ограничением по углу)."""
+    bm.normal_update()
+    sharp = [e for e in bm.edges if e.is_manifold and e.calc_face_angle(0) > math.radians(angle_deg)]
+    if sharp:
+        bmesh.ops.bevel(bm, geom=sharp, offset=offset, segments=segments, profile=0.5,
+                        affect='EDGES', clamp_overlap=True)
+
+
+def lathe(bm, profile, matrix, segs=16):
+    """Тело вращения из профиля [(радиус, высота)] — пуговицы, кокарда."""
+    rings = []
+    for r, z in profile:
+        if r < 1e-6:
+            rings.append([bm.verts.new(matrix @ Vector((0, 0, z)))])
+        else:
+            rings.append([bm.verts.new(matrix @ Vector((r * math.cos(2 * math.pi * j / segs),
+                                                        r * math.sin(2 * math.pi * j / segs), z)))
+                          for j in range(segs)])
+    for ra, rb in zip(rings, rings[1:]):
+        if len(ra) == 1 and len(rb) == 1:
+            continue
+        if len(ra) == 1 or len(rb) == 1:
+            tip, ring = (ra[0], rb) if len(ra) == 1 else (rb[0], ra)
+            for j in range(segs):
+                bm.faces.new((ring[j], ring[(j + 1) % segs], tip))
+        else:
+            for j in range(segs):
+                bm.faces.new((ra[j], ra[(j + 1) % segs], rb[(j + 1) % segs], rb[j]))
+
+
 # ----------------------------------------------------------------- части и веса
 def seg_dist(p, a, b):
     ab = b - a
@@ -162,6 +398,9 @@ def seg_dist(p, a, b):
 
 
 def make_part(name, bm, material, bones, smooth=False, weights=None):
+    ngons = [f for f in bm.faces if len(f.verts) > 4]      # n-gon -> треугольники (игровая топология)
+    if ngons:
+        bmesh.ops.triangulate(bm, faces=ngons, quad_method='BEAUTY', ngon_method='BEAUTY')
     bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
     me = bpy.data.meshes.new(f"Bellhop_{name}")
     bm.to_mesh(me)
@@ -210,36 +449,55 @@ def define_skeleton():
         bone(f"clavicle_{sfx}", (0.03 * s, -0.05, 1.90), (0.22 * s, -0.04, 1.88), "spine_03")
         bone(f"upperarm_{sfx}", (0.24 * s, -0.04, 1.87), (0.34 * s, -0.08, 1.38), f"clavicle_{sfx}")
         bone(f"lowerarm_{sfx}", (0.34 * s, -0.08, 1.38), (0.40 * s, -0.12, 0.88), f"upperarm_{sfx}")
-        bone(f"hand_{sfx}", (0.40 * s, -0.12, 0.88), (0.43 * s, -0.14, 0.78), f"lowerarm_{sfx}")
+        bone(f"hand_{sfx}", (0.40 * s, -0.12, 0.88), (0.44 * s, -0.145, 0.75), f"lowerarm_{sfx}")
         for fname, path in finger_paths(s).items():
-            mid = len(path) // 2
-            bone(f"{fname}_01_{sfx}", path[0], path[mid], f"hand_{sfx}")
-            bone(f"{fname}_02_{sfx}", path[mid], path[-1], f"{fname}_01_{sfx}")
+            bone(f"{fname}_01_{sfx}", path[0], path[1], f"hand_{sfx}")
+            bone(f"{fname}_02_{sfx}", path[1], path[2], f"{fname}_01_{sfx}")
+            bone(f"{fname}_03_{sfx}", path[2], path[3], f"{fname}_02_{sfx}")
         bone(f"thigh_{sfx}", (0.08 * s, 0.02, 1.30), (0.10 * s, 0.0, 0.72), "pelvis")
         bone(f"calf_{sfx}", (0.10 * s, 0.0, 0.72), (0.11 * s, 0.03, 0.10), f"thigh_{sfx}")
         bone(f"foot_{sfx}", (0.11 * s, 0.03, 0.10), (0.11 * s, -0.15, 0.03), f"calf_{sfx}")
 
 
 def finger_paths(s):
-    """Пути пальцев: 4 когтя + большой. Кисть висит, ладонь смотрит внутрь (к телу)."""
-    knuckle = Vector((0.43 * s, -0.14, 0.78))
+    """Пальцы: [основание, сустав 1, сустав 2, конец пальца, кончик когтя].
+    Кисть висит, ладонь смотрит к телу; пальцы загибаются к ладони и вперёд."""
+    knuckle = P(f"hand_{'l' if s > 0 else 'r'}", 1) if BONES else Vector((0.44 * s, -0.145, 0.75))
     L = FINGER_LEN
     paths = {}
-    for name, dy, scale in (("index", -0.03, 0.95), ("middle", -0.01, 1.0),
-                            ("ring", 0.01, 0.95), ("pinky", 0.03, 0.8)):
+    for name, dy, scale in (("index", -0.039, 0.95), ("middle", -0.013, 1.0),
+                            ("ring", 0.013, 0.93), ("pinky", 0.039, 0.78)):
         base = knuckle + Vector((0, dy, 0))
-        spread = dy * 3.0
+        sp = dy * 3.2
         l = L * scale
-        paths[name] = [
-            base,
-            base + Vector((0.025 * s, spread * 0.4, -0.33 * l)),
-            base + Vector((0.015 * s, spread * 0.8 - 0.02, -0.66 * l)),
-            base + Vector((-0.03 * s, spread - 0.05, -1.0 * l)),
-        ]
-    tb = Vector((0.41 * s, -0.165, 0.845))
-    paths["thumb"] = [tb, tb + Vector((0.005 * s, -0.05, -0.06)),
-                      tb + Vector((-0.01 * s, -0.09, -0.13)), tb + Vector((-0.04 * s, -0.11, -0.19))]
+        j1 = base + Vector((0.03 * s, sp * 0.45, -0.42 * l))              # веер наружу
+        j2 = j1 + Vector((0.0, sp * 0.3 - 0.022, -0.3 * l))
+        j3 = j2 + Vector((-0.03 * s, sp * 0.25 - 0.035, -0.2 * l))       # загиб к ладони
+        tip = j3 + Vector((-0.04 * s, -0.04, -0.05))
+        paths[name] = [base, j1, j2, j3, tip]
+    tb = knuckle + Vector((-0.025 * s, -0.03, 0.07))
+    j1 = tb + Vector((0.005 * s, -0.04, -0.05))
+    j2 = j1 + Vector((-0.005 * s, -0.03, -0.06))
+    j3 = j2 + Vector((-0.02 * s, -0.015, -0.05))
+    paths["thumb"] = [tb, j1, j2, j3, j3 + Vector((-0.03 * s, -0.01, -0.045))]
     return paths
+
+
+def build_hand(s, x):
+    """Пальцы с фалангами и утолщениями суставов + отдельные загнутые когти."""
+    for fname, (base, j1, j2, j3, tip) in finger_paths(s).items():
+        r = 0.019 * (0.85 if fname == "pinky" else 1.0) * (1.1 if fname == "thumb" else 1.0)
+        bm = bmesh.new()
+        tube(bm, [base, base.lerp(j1, 0.5), j1, j1.lerp(j2, 0.5), j2, j2.lerp(j3, 0.5), j3],
+             [r, r * 0.84, r * 0.98, r * 0.76, r * 0.86, r * 0.66, r * 0.7], segs=8, sub=2)
+        make_part(f"Finger_{fname}_{x}", bm, "Skin",
+                  [f"hand_{x}", f"{fname}_01_{x}", f"{fname}_02_{x}", f"{fname}_03_{x}"], smooth=True)
+        d = (j3 - j2).normalized()
+        mid = j3.lerp(tip, 0.5) - Vector((0, 0, 0.004))          # коготь слегка загнут
+        bm = bmesh.new()
+        tube(bm, [j3 - d * 0.012, j3 + d * 0.004, mid, tip], [r * 0.62, r * 0.6, r * 0.38, 0.0],
+             segs=6, sub=3)
+        make_part(f"Claw_{fname}_{x}", bm, "Claws", [f"{fname}_03_{x}"], smooth=True)
 
 
 # ----------------------------------------------------------------- тело: анатомия
@@ -253,8 +511,8 @@ def finger_paths(s):
 
 MB_K = 0.57                     # видимый радиус метабола = MB_K * radius (threshold 0.6, stiffness 2)
 BODY_FACES = 5200               # бюджет ретопологии тела (квадов)
-JACKET_FACES = 3600
-PANTS_FACES = 2200
+JACKET_FACES = 5200
+PANTS_FACES = 3200
 HEM_Z = 1.22                    # низ пиджака
 SHOW_CLOTHES = True             # False — показать только анатомию (для проверки формы)
 
@@ -329,7 +587,8 @@ def anatomy_balls():
               C(f"forearm_{x}", El.lerp(W, 0.5), W, 0.019),
               E(f"forearm_{x}", El.lerp(W, 0.25) + Vector((0.012 * s, -0.01, 0)), (0.029, 0.026, 0.1), fa),
               E(f"hand_{x}", W + Vector((0.008 * s, 0.012, 0)), (0.011, 0.011, 0.011)),    # шиловидный отросток
-              E(f"hand_{x}", Hh.lerp(Ht, 0.55), (0.016, 0.042, 0.052), Ht - Hh)]          # ладонь
+              E(f"hand_{x}", Hh.lerp(Ht, 0.55), (0.02, 0.05, 0.062), Ht - Hh),          # ладонь
+              E(f"hand_{x}", Ht + Vector((0.004 * s, 0, 0.008)), (0.018, 0.056, 0.016))]   # костяшки
     # --- ноги
     for s, x in ((1, "l"), (-1, "r")):
         T, K, A = P(f"thigh_{x}", 0), P(f"thigh_{x}", 1), P(f"calf_{x}", 1)
@@ -353,20 +612,20 @@ def clothes_balls():
     up = (P("spine_02", 1) - P("spine_02", 0))
     jacket = [E("torso", (0, 0.0, 1.70), (0.147, 0.104, 0.18), up),
               E("torso_up", (0, -0.03, 1.835), (0.155, 0.088, 0.075), up),
-              E("torso", (0, 0.002, 1.47), (0.112, 0.09, 0.1)),                  # талия
+              E("torso", (0, 0.002, 1.47), (0.1, 0.085, 0.1)),                    # узкая талия
               E("pelvis", (0, 0.02, 1.29), (0.152, 0.112, 0.1))]                 # расклёшенный низ
     pants = [E("pelvis", (0, 0.015, 1.33), (0.135, 0.1, 0.09))]
     for s, x in ((1, "l"), (-1, "r")):
         U, El, W = P(f"upperarm_{x}", 0), P(f"upperarm_{x}", 1), P(f"lowerarm_{x}", 1)
-        jacket += [E(f"shoulder_{x}", (0.205 * s, -0.04, 1.872), (0.078, 0.07, 0.04)),   # плечевые накладки
+        jacket += [E(f"shoulder_{x}", (0.222 * s, -0.04, 1.878), (0.1, 0.078, 0.046)),   # плечевые накладки
                    C(f"arm_{x}", U + Vector((0, 0, -0.02)), El, 0.049),
                    C(f"forearm_{x}", El, W, 0.045),
                    E(f"forearm_{x}", El.lerp(W, 0.93), (0.05, 0.05, 0.035), W - El)]     # раструб манжеты
         T, K, A = P(f"thigh_{x}", 0), P(f"thigh_{x}", 1), P(f"calf_{x}", 1)
-        pants += [C(f"leg_{x}", T, K, 0.052),
-                  E(f"knee_{x}", K, (0.05, 0.048, 0.05)),
-                  C(f"shin_{x}", K, A + Vector((0, 0, 0.02)), 0.048),
-                  E(f"shin_{x}", K.lerp(A, 0.9), (0.06, 0.058, 0.06), A - K)]            # клёш
+        pants += [C(f"leg_{x}", T, K, 0.06),
+                  E(f"knee_{x}", K, (0.058, 0.056, 0.055)),
+                  C(f"shin_{x}", K, A + Vector((0, 0, 0.02)), 0.056),
+                  E(f"shin_{x}", K.lerp(A, 0.88), (0.072, 0.07, 0.075), A - K)]          # клёш
     return jacket, pants
 
 
@@ -591,6 +850,8 @@ def obj_to_part(obj, name, material, weights, smooth=True, jitter_amount=0.0, hi
         bm.verts.ensure_lookup_table()
         dead = [f for f in bm.faces if all(hidden[v.index] for v in f.verts)]
         bmesh.ops.delete(bm, geom=dead, context='FACES_ONLY')
+        wire = [e for e in bm.edges if not e.link_faces]
+        bmesh.ops.delete(bm, geom=wire, context='EDGES')
         loose = [v for v in bm.verts if not v.link_faces]
         bmesh.ops.delete(bm, geom=loose, context='VERTS')
         weights = [weights[v[layer]] for v in bm.verts]
@@ -613,23 +874,72 @@ def cut_mesh(obj, plane_co, plane_no, select=lambda co: True):
     bm.free()
 
 
-def band(src_obj, name, material, predicate, offset, bones):
-    """Золотая окантовка: копия полосы граней одежды, приподнятая над поверхностью."""
-    bm = bmesh.new()
-    bm.from_mesh(src_obj.data)
-    bm.normal_update()
-    keep = [f for f in bm.faces if predicate(f.calc_center_median())]
-    drop = [f for f in bm.faces if f not in set(keep)]
-    bmesh.ops.delete(bm, geom=drop, context='FACES')
+def _limb_frame(co, a, b):
+    """Параметр вдоль сегмента кости (м), расстояние и радиальное направление."""
+    ab = b - a
+    t = max(0.0, min(1.0, (co - a).dot(ab) / ab.length_squared))
+    c = a + ab * t
+    r = co - c
+    return t * ab.length, r.length, (r.normalized() if r.length > 1e-6 else Vector((1, 0, 0)))
+
+
+def _groove(radial, seam_dir, width=0.09, depth=0.0016):
+    """Шов: узкая канавка там, где радиальное направление совпадает с seam_dir."""
+    ang = radial.angle(seam_dir, math.pi)
+    return -depth * math.exp(-(ang / width) ** 2)
+
+
+def fabric_detail(bm, kind):
+    """Складки и швы ткани (смещение вдоль нормали):
+    jacket — заломы на сгибе локтя, гармошка над манжетами, швы на рукавах и боках;
+    pants — заломы под коленом, гармошка у щиколотки, боковые швы, продольные складки."""
+    from mathutils import noise
     bm.normal_update()
     for v in bm.verts:
-        v.co += v.normal * offset
-    return make_part(name, bm, material, bones, smooth=True)
+        co, off = v.co, 0.0
+        nz = noise.noise(co * 25.0)
+        if kind == "jacket":
+            s = 1 if co.x > 0 else -1
+            x = "l" if s > 0 else "r"
+            U, El, W = P(f"upperarm_{x}", 0), P(f"upperarm_{x}", 1), P(f"lowerarm_{x}", 1)
+            if abs(co.x) > 0.17 and co.z < 1.9:                       # рукав
+                su, du, ru = _limb_frame(co, U, El)
+                sf, df, rf = _limb_frame(co, El, W)
+                upper = du < df
+                along = su if upper else (El - U).length + sf
+                radial = ru if upper else rf
+                L1, Lt = (El - U).length, (El - U).length + (W - El).length
+                inner = max(0.0, -radial.y)                           # сгиб локтя спереди
+                off += 0.0045 * inner * math.exp(-((along - L1) / 0.07) ** 2) * \
+                    math.sin(along / 0.032 * 2 * math.pi + nz * 2)
+                off += 0.003 * math.exp(-((Lt - along) / 0.08) ** 2) * \
+                    math.sin(along / 0.028 * 2 * math.pi + math.atan2(radial.x, radial.y) * 1.5)
+                off += _groove(radial, Vector((0.35 * s, 1, 0)).normalized())   # шов сзади рукава
+            elif co.z < 1.86:                                         # корпус
+                radial = Vector((co.x, co.y - 0.01, 0)).normalized()
+                off += _groove(radial, Vector((1, 0, 0)), 0.06) + _groove(radial, Vector((-1, 0, 0)), 0.06)
+                off += _groove(radial, Vector((0, 1, 0)), 0.05)       # центральный шов спины
+            off += 0.0012 * noise.noise(Vector((co.x * 30, co.y * 30, co.z * 8)))
+        else:
+            s = 1 if co.x > 0 else -1
+            x = "l" if s > 0 else "r"
+            T, K, A = P(f"thigh_{x}", 0), P(f"thigh_{x}", 1), P(f"calf_{x}", 1)
+            st, dt, rt = _limb_frame(co, T, K)
+            ss, ds, rs = _limb_frame(co, K, A)
+            radial = rt if dt < ds else rs
+            back = max(0.0, radial.y)
+            off += 0.004 * back * math.exp(-((co.z - K.z) / 0.06) ** 2) * math.sin(co.z / 0.03 * 2 * math.pi)
+            off += 0.0045 * math.exp(-((co.z - 0.17) / 0.07) ** 2) * \
+                math.sin(co.z / 0.034 * 2 * math.pi + math.atan2(radial.x, radial.y) * 2)
+            off += _groove(radial, Vector((s, 0, 0)))                    # боковой шов
+            off += 0.0016 * noise.noise(Vector((co.x * 40, co.y * 40, co.z * 5)))   # продольные складки
+        v.co += v.normal * off
 
 
-def push_outside(cloth, body_tree, gap=0.007, passes=3):
+def push_outside(cloth, body_tree, gap=0.007, passes=3, kind=None):
     """«Коллизия» ткани с телом: вершины одежды выталкиваются наружу кожи с зазором,
-    затем ткань сглаживается (без возврата внутрь тела)."""
+    затем ткань сглаживается (без возврата внутрь тела). Перед последним проходом
+    наносятся складки и швы (fabric_detail)."""
     bm = bmesh.new()
     bm.from_mesh(cloth.data)
     for it in range(passes):
@@ -644,7 +954,9 @@ def push_outside(cloth, body_tree, gap=0.007, passes=3):
             bmesh.ops.smooth_vert(bm, verts=bm.verts, factor=0.5,
                                   use_axis_x=True, use_axis_y=True, use_axis_z=True)
         elif it == passes - 2:
-            jitter(bm, CLOTH_JITTER * 0.6)          # «мятость» до последнего выталкивания
+            jitter(bm, CLOTH_JITTER * 0.4)          # «мятость» до последнего выталкивания
+            if kind:
+                fabric_detail(bm, kind)
     bm.to_mesh(cloth.data)
     bm.free()
 
@@ -667,13 +979,9 @@ def build_body():
     if not SHOW_CLOTHES:
         obj_to_part(body, "Body", "Skin", bw)
 
-    # пальцы-когти (трубки) — анатомия ладони уже в теле
+    # кисти: пальцы с суставами и когти (ладонь — часть анатомии тела)
     for s, x in ((1, "l"), (-1, "r")):
-        for fname, path in finger_paths(s).items():
-            bm = bmesh.new()
-            tube(bm, path, [0.016, 0.013, 0.009, 0.0], segs=6, sub=3)
-            make_part(f"Finger_{fname}_{x}", bm, "Skin", [f"hand_{x}", f"{fname}_01_{x}", f"{fname}_02_{x}"],
-                      smooth=True)
+        build_hand(s, x)
     if not SHOW_CLOTHES:
         return
 
@@ -685,12 +993,12 @@ def build_body():
         if b.neg:
             continue
         base = b.region.rsplit("_", 1)[0] if b.region[-2:] in ("_l", "_r") else b.region
-        inflated = Ball(b.region, b.kind, b.a, b.b, semi=tuple(x + 0.01 for x in b.semi))
-        inflated.axis = getattr(b, "axis", Vector((0, 0, 1)))
-        if base in jacket_regions:
-            jacket_balls.append(inflated)
-        if base in pants_regions:
-            pants_balls.append(inflated)
+        # слои: брюки +1 см над кожей, пиджак +1.8 см (он поверх брюк)
+        for regions, extra, target in ((jacket_regions, 0.018, jacket_balls), (pants_regions, 0.01, pants_balls)):
+            if base in regions:
+                inflated = Ball(b.region, b.kind, b.a, b.b, semi=tuple(x + extra for x in b.semi))
+                inflated.axis = getattr(b, "axis", Vector((0, 0, 1)))
+                target.append(inflated)
     jacket = balls_to_mesh("JacketSrc", jacket_balls, JACKET_FACES, resolution=0.008)
     cut_mesh(jacket, (0, 0, HEM_Z), (0, 0, -1))                                   # подол
     for s, x in ((1, "l"), (-1, "r")):
@@ -699,44 +1007,83 @@ def build_body():
         cut_mesh(jacket, W - d * 0.03, d, select=lambda c, s=s: c.x * s > 0.2)    # манжеты
     pants = balls_to_mesh("PantsSrc", pants_balls, PANTS_FACES, resolution=0.008)
     cut_mesh(pants, (0, 0, 0.07), (0, 0, -1))
-    push_outside(pants, body_tree, gap=0.009, passes=3)
-    push_outside(jacket, body_tree, gap=0.009, passes=3)
+    cut_mesh(pants, (0, 0, HEM_Z + 0.12), (0, 0, 1))                              # пояс скрыт под пиджаком
+    push_outside(pants, body_tree, gap=0.009, passes=3, kind="pants")
+    push_outside(jacket, body_tree, gap=0.009, passes=3, kind="jacket")
 
-    # детали поверх пиджака: окантовки, пуговицы, эполеты
-    band(jacket, "HemTrim", "Gold", lambda c: c.z < HEM_Z + 0.022, 0.003, ["pelvis", "spine_01"])
+    # латунные канты по краям ткани: подол и манжеты (петли граничных рёбер)
+    brass = rounded_profile(0.0045, 0.02)
+    for loop in boundary_loops(jacket):
+        c = sum(loop, Vector()) / len(loop)
+        pts = resample_loop(smooth_loop(loop), 0.012)
+        if abs(c.z - HEM_Z) < 0.06 and abs(c.x) < 0.1:
+            up, name, bones = Vector((0, 0, 1)), "HemTrim", ["pelvis", "spine_01", "thigh_l", "thigh_r"]
+        else:
+            x = "l" if c.x > 0 else "r"
+            up = (P(f"upperarm_{x}", 1) - P(f"lowerarm_{x}", 1)).normalized()
+            name, bones = f"Cuff_{x}", [f"lowerarm_{x}"]
+        pts = [p + up * 0.008 for p in pts]
+        bm = bmesh.new()
+        ring_band(bm, pts, up, brass, center=c)
+        make_part(name, bm, "OldBrass", bones, smooth=True)
+
+    # эполеты: доска с фаской, латунная окантовка, пуговица
     for s, x in ((1, "l"), (-1, "r")):
-        El, W = P(f"upperarm_{x}", 1), P(f"lowerarm_{x}", 1)
-        d = (W - El).normalized()
-        cuff_c = W - d * 0.03
+        top, nrm = raycast(jacket, (0.2 * s, -0.04, 2.3), (0, 0, -1))
+        if not top:
+            continue
+        rot = nrm.to_track_quat('Z', 'Y').to_matrix() @ Matrix.Rotation(math.radians(4 * s), 3, 'Z')
+        bones = [f"clavicle_{x}", f"upperarm_{x}"]
+        bm = bmesh.new()
+        box(bm, top + nrm * 0.008, (0.125, 0.115, 0.012), rot)
+        bevel_sharp(bm, 0.003, 2)
+        make_part(f"Epaulette_{x}", bm, "RedFabric", bones, smooth=True)
+        corners = [Vector((sx * 0.0625, sy * 0.0575, 0)) for sx, sy in ((-1, -1), (1, -1), (1, 1), (-1, 1))]
+        outline = []
+        for i in range(4):
+            a, b = corners[i], corners[(i + 1) % 4]
+            outline += [a.lerp(b, k / 6) for k in range(6)]
+        outline = [top + nrm * 0.008 + rot @ p for p in smooth_loop(outline, 1)]
+        bm = bmesh.new()
+        ring_band(bm, outline, nrm, rounded_profile(0.003, 0.016), center=top)
+        make_part(f"EpauletteTrim_{x}", bm, "OldBrass", bones, smooth=True)
+        bm = bmesh.new()
+        lathe(bm, BUTTON_PROFILE, Matrix.Translation(top + nrm * 0.015 + rot @ Vector((-0.045 * s, 0, 0)))
+              @ nrm.to_track_quat('Z', 'Y').to_matrix().to_4x4(), segs=12)
+        make_part(f"EpauletteButton_{x}", bm, "OldBrass", bones, smooth=True)
 
-        def near_cuff(c, cc=cuff_c, d=d, s=s):
-            return c.x * s > 0.2 and -0.03 < (c - cc).dot(d) < 0.0
-        band(jacket, f"Cuff_{x}", "Gold", near_cuff, 0.003, [f"lowerarm_{x}"])
-
-        top, _ = raycast(jacket, (0.2 * s, -0.04, 2.3), (0, 0, -1))
-        if top:
-            rot = Matrix.Rotation(math.radians(-8 * s), 3, 'Y')
-            bm = bmesh.new()
-            box(bm, top + Vector((0, 0, 0.006)), (0.12, 0.13, 0.014), rot)
-            make_part(f"Epaulette_{x}", bm, "Jacket", [f"clavicle_{x}", f"upperarm_{x}"])
-            bm = bmesh.new()
-            box(bm, top + Vector((0, 0, 0.0)), (0.128, 0.138, 0.01), rot)
-            make_part(f"EpauletteTrim_{x}", bm, "Gold", [f"clavicle_{x}", f"upperarm_{x}"])
+    # пуговицы: выточенные, с бортиком, по нормали поверхности
     bm = bmesh.new()
     for x in (-0.05, 0.05):
         for z in (1.52, 1.62, 1.72):
             hit, n = raycast(jacket, (x, -1.0, z), (0, 1, 0))
             if hit:
-                sphere(bm, hit + n * 0.002, 0.012, segs=8, rings=4, scale=(1, 0.5, 1))
-    make_part("Buttons", bm, "Button", ["spine_01", "spine_02"], smooth=True)
+                m = Matrix.Translation(hit - n * 0.001) @ n.to_track_quat('Z', 'Y').to_matrix().to_4x4()
+                lathe(bm, BUTTON_PROFILE, m, segs=14)
+    make_part("Buttons", bm, "Metal", ["spine_01", "spine_02"], smooth=True)
 
-    # стоячий воротник
+    # рубашка под воротником и стоячий воротник с вырезом спереди и латунным кантом
+    neck_a, neck_b = Vector((0, -0.06, 1.87)), Vector((0, -0.2, 2.03))
+    axis = (neck_b - neck_a).normalized()
+    front = (Vector((0, -1, 0)) - Vector((0, -1, 0)).dot(axis) * axis).normalized()
+    side = axis.cross(front)
     bm = bmesh.new()
-    tube(bm, [(0, -0.075, 1.93), (0, -0.1, 2.0)], [(0.064, 0.058), (0.06, 0.054)], segs=14, sub=1)
-    make_part("Collar", bm, "Jacket", ["spine_03", "neck"])
+    tube(bm, [neck_a + axis * 0.02, neck_a + axis * 0.13], [(0.048, 0.044), (0.042, 0.039)], segs=14, sub=1)
+    make_part("Shirt", bm, "DarkFabric", ["spine_03", "neck"], smooth=True)
+
+    def collar_arc(base, rx, ry, gap_deg=26, n=26):
+        g = math.radians(gap_deg)
+        return [base + side * (rx * math.sin(phi)) + front * (ry * math.cos(phi))
+                for phi in (g + (2 * math.pi - 2 * g) * k / (n - 1) for k in range(n))]
+    cbase = neck_a + axis * 0.075
+    arc = collar_arc(cbase + axis * 0.035, 0.066, 0.062)
     bm = bmesh.new()
-    tube(bm, [(0, -0.097, 1.99), (0, -0.101, 2.006)], [(0.062, 0.056), (0.061, 0.055)], segs=14, sub=1)
-    make_part("CollarTrim", bm, "Gold", ["spine_03", "neck"])
+    ring_band(bm, arc, axis, rounded_profile(0.008, 0.07), closed=False, center=cbase)
+    make_part("Collar", bm, "RedFabric", ["spine_03", "neck"], smooth=True)
+    bm = bmesh.new()
+    ring_band(bm, [p + axis * 0.032 for p in collar_arc(cbase + axis * 0.035, 0.073, 0.069)],
+              axis, rounded_profile(0.004, 0.012), closed=False, center=cbase)
+    make_part("CollarTrim", bm, "OldBrass", ["spine_03", "neck"], smooth=True)
 
     # кожа, полностью скрытая под одеждой, удаляется (как в игровых моделях): ничего не протыкает
     # при анимации и экономит полигоны. Полная анатомия — при SHOW_CLOTHES = False.
@@ -759,7 +1106,7 @@ def build_body():
              [(0.050, 0.045), (0.058, 0.055), (0.060, 0.040), (0.045, 0.028)], segs=10, sub=2)
         for v in bm.verts:
             v.co.z = max(v.co.z, 0.0)
-        make_part(f"Shoe_{x}", bm, "Shoes", [f"foot_{x}", f"calf_{x}"])
+        make_part(f"Shoe_{x}", bm, "Leather", [f"foot_{x}", f"calf_{x}"], smooth=True)
 
 
 # ----------------------------------------------------------------- голова
@@ -770,7 +1117,7 @@ def build_body():
 # наносится кожа: шум, морщины, складки у рта, шрам. Все координаты — локальные
 # для головы (лицо смотрит в -Y, верх +Z), метры.
 
-HEAD_RES = 34                   # плотность сетки головы (34 -> ~14k треугольников)
+HEAD_RES = 30                   # плотность сетки головы (30 -> ~11k треугольников)
 MOUTH_AXIS_Y = -0.03            # ось, вокруг которой изгибается улыбка
 MOUTH_HALF_ANGLE = 1.38         # половина ширины улыбки, радианы (~79°)
 JAW_PIVOT = Vector((0, 0.025, -0.035))
@@ -1002,21 +1349,72 @@ def build_head():
     bm = build_eyes()
     finish(bm, "Eyes", "Eyes", smooth=True)
 
-    # шапка-таблетка с козырьком и золотыми полосами
+    build_hat(head_m)
+
+
+def build_hat(head_m):
+    """Шапка-таблетка: тулья с фаской по верхнему краю, изогнутый козырёк,
+    две латунные ленты и кокарда спереди. Координаты — локальные для головы."""
+    c = Vector((0, 0.008, 0))
+    z0, z1 = 0.072, 0.178
+    rx0, ry0, rx1, ry1 = 0.094, 0.098, 0.101, 0.105
+
+    def radii(z):
+        t = (z - z0) / (z1 - z0)
+        return rx0 + (rx1 - rx0) * t, ry0 + (ry1 - ry0) * t
+
+    def ellipse(z, grow=0.0, n=40):
+        rx, ry = radii(z)
+        return [c + Vector(((rx + grow) * math.sin(a), -(ry + grow) * math.cos(a), z))
+                for a in (2 * math.pi * k / n for k in range(n))]
+
+    def finish(bm, name, mat_name):
+        bmesh.ops.transform(bm, matrix=head_m, verts=bm.verts)
+        make_part(name, bm, mat_name, ["head"], smooth=True)
+
     bm = bmesh.new()
-    tube(bm, [(0, 0.008, 0.075), (0, 0.008, 0.125), (0, 0.008, 0.175)],
-         [(0.094, 0.098), (0.097, 0.101), (0.101, 0.105)], segs=16, sub=1)
-    jitter(bm, CLOTH_JITTER * 0.5)
-    finish(bm, "Hat", "Jacket")
+    tube(bm, [c + Vector((0, 0, z0)), c + Vector((0, 0, (z0 + z1) / 2)), c + Vector((0, 0, z1))],
+         [(rx0, ry0), radii((z0 + z1) / 2), (rx1, ry1)], segs=32, sub=1)
+    bevel_sharp(bm, 0.006, 3, 30)                       # мягкий верхний край тульи
+    jitter(bm, CLOTH_JITTER * 0.25)
+    finish(bm, "Hat", "RedFabric")
+
     bm = bmesh.new()
-    for z0, z1 in ((0.074, 0.090), (0.150, 0.160)):
-        r0 = 0.094 + 0.007 * (z0 - 0.075) / 0.1
-        tube(bm, [(0, 0.008, z0), (0, 0.008, z1)], [(r0 + 0.005, r0 + 0.009), (r0 + 0.006, r0 + 0.010)],
-             segs=16, sub=1)
-    finish(bm, "HatTrim", "Gold")
+    for zb, h in ((0.083, 0.018), (0.157, 0.011)):
+        ring_band(bm, ellipse(zb), Vector((0, 0, 1)), rounded_profile(0.004, h), center=c + Vector((0, 0, zb)))
+    finish(bm, "HatTrim", "OldBrass")
+
+    # козырёк: изогнутая по окружности пластина с наклоном вниз и фаской
     bm = bmesh.new()
-    box(bm, Vector((0, -0.105, 0.072)), (0.13, 0.05, 0.008), Matrix.Rotation(math.radians(-12), 3, 'X'))
-    finish(bm, "HatVisor", "Shoes")
+    rows = []
+    for k in range(13):
+        a = math.radians(-42 + 84 * k / 12)
+        row = []
+        for depth, dz in ((0.0, 0.0), (0.034, -0.014)):
+            r = (rx0 + depth, ry0 + depth)
+            p = c + Vector((r[0] * math.sin(a), -r[1] * math.cos(a), z0 + 0.004 + dz))
+            row += [bm.verts.new(p), bm.verts.new(p + Vector((0, 0, -0.006)))]
+        rows.append(row)
+    for ra, rb in zip(rows, rows[1:]):
+        bm.faces.new((ra[0], ra[2], rb[2], rb[0]))       # верх
+        bm.faces.new((ra[1], rb[1], rb[3], ra[3]))       # низ
+        bm.faces.new((ra[2], ra[3], rb[3], rb[2]))       # внешний край
+        bm.faces.new((ra[0], rb[0], rb[1], ra[1]))       # внутренний край
+    for row in (rows[0], rows[-1]):
+        bm.faces.new((row[0], row[1], row[3], row[2]))
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    bevel_sharp(bm, 0.0015, 1, 40)
+    finish(bm, "HatVisor", "Leather")
+
+    # кокарда: латунная бляха между лентами
+    bm = bmesh.new()
+    zc = 0.122
+    rx, ry = radii(zc)
+    pos = c + Vector((0, -ry - 0.001, zc))
+    lathe(bm, [(0.0, 0.006), (0.009, 0.0052), (0.014, 0.003), (0.0155, 0.0), (0.0, 0.0)],
+          Matrix.Translation(pos) @ Vector((0, -1, 0)).to_track_quat('Z', 'Y').to_matrix().to_4x4()
+          @ Matrix.Diagonal((1.0, 0.75, 1.0, 1.0)), segs=16)
+    finish(bm, "HatBadge", "OldBrass")
 
 
 # ----------------------------------------------------------------- сборка
@@ -1039,6 +1437,76 @@ def build_armature(collection):
             ebs[name].use_connect = (ebs[parent].tail - h).length < 1e-5
     bpy.ops.object.mode_set(mode='OBJECT')
     return obj
+
+
+# отдельные объекты персонажа: имя -> префиксы частей (одежда отдельно от тела)
+GROUPS = [
+    ("Bellhop_Body",    ("Body", "Finger_")),
+    ("Bellhop_Claws",   ("Claw_",)),
+    ("Bellhop_Head",    ("Head",)),
+    ("Bellhop_Teeth",   ("TeethUpper", "TeethLower")),
+    ("Bellhop_Eyes",    ("Eyes",)),
+    ("Bellhop_Shirt",   ("Shirt",)),
+    ("Bellhop_Jacket",  ("Jacket", "Collar", "Epaulette_")),
+    ("Bellhop_Pants",   ("Pants",)),
+    ("Bellhop_Shoes",   ("Shoe_",)),
+    ("Bellhop_Hat",     ("Hat", "HatVisor")),
+    ("Bellhop_Brass",   ("HemTrim", "Cuff_", "CollarTrim", "EpauletteTrim_", "EpauletteButton_",
+                         "HatTrim", "HatBadge")),
+    ("Bellhop_Buttons", ("Buttons",)),
+]
+HARD_SURFACE = {"Bellhop_Brass", "Bellhop_Buttons", "Bellhop_Hat", "Bellhop_Shoes", "Bellhop_Claws"}
+
+
+def _group_of(part_name):
+    short = part_name[len("Bellhop_"):]
+    best = None
+    for gname, prefixes in GROUPS:
+        for pre in prefixes:
+            exact = not pre.endswith("_")
+            if (short == pre) if exact else short.startswith(pre):
+                if best is None or len(pre) > best[1]:
+                    best = (gname, len(pre))
+    return best[0] if best else "Bellhop_Body"
+
+
+def assemble_objects(coll, rig):
+    """Части -> отдельные объекты (тело, голова, зубы, глаза, рубашка, пиджак, брюки, обувь,
+    шапка, латунь, пуговицы). Каждый: UV, привязка к общему скелету, Weighted Normals для металла."""
+    groups = {}
+    for p in PARTS:
+        groups.setdefault(_group_of(p.name), []).append(p)
+    result = []
+    for gname, _ in GROUPS:
+        parts = groups.get(gname)
+        if not parts:
+            continue
+        bpy.ops.object.select_all(action='DESELECT')
+        for p in parts:
+            p.select_set(True)
+        bpy.context.view_layer.objects.active = parts[0]
+        if len(parts) > 1:
+            bpy.ops.object.join()
+        obj = parts[0]
+        obj.name = obj.data.name = gname
+        for c in list(obj.users_collection):
+            c.objects.unlink(obj)
+        coll.objects.link(obj)
+        bpy.context.view_layer.objects.active = obj
+        obj.select_set(True)
+        bpy.ops.object.mode_set(mode='EDIT')
+        bpy.ops.mesh.select_all(action='SELECT')
+        bpy.ops.uv.smart_project(angle_limit=math.radians(66), island_margin=0.004)
+        bpy.ops.object.mode_set(mode='OBJECT')
+        if gname in HARD_SURFACE:
+            wn = obj.modifiers.new("WeightedNormal", 'WEIGHTED_NORMAL')
+            wn.keep_sharp = True
+            bpy.ops.object.modifier_apply(modifier=wn.name)
+        obj.parent = rig
+        obj.modifiers.new("Armature", 'ARMATURE').object = rig
+        obj.select_set(False)
+        result.append(obj)
+    return result
 
 
 def cleanup():
@@ -1071,33 +1539,15 @@ def main():
     build_head()
 
     coll = target_collection()
-    # объединяем части в один меш
-    bpy.ops.object.select_all(action='DESELECT')
-    for p in PARTS:
-        p.select_set(True)
-    body = PARTS[0]
-    bpy.context.view_layer.objects.active = body
-    bpy.ops.object.join()
-    body.name = body.data.name = "Bellhop_Mesh"
-    for c in list(body.users_collection):
-        c.objects.unlink(body)
-    coll.objects.link(body)
-
-    # UV-развёртка
-    bpy.ops.object.mode_set(mode='EDIT')
-    bpy.ops.mesh.select_all(action='SELECT')
-    bpy.ops.uv.smart_project(angle_limit=math.radians(66), island_margin=0.004)
-    bpy.ops.object.mode_set(mode='OBJECT')
-
-    # скелет и привязка
     rig = build_armature(coll)
-    body.parent = rig
-    mod = body.modifiers.new("Armature", 'ARMATURE')
-    mod.object = rig
+    objects = assemble_objects(coll, rig)
 
-    tris = sum(len(p.vertices) - 2 for p in body.data.polygons)
-    print(f"[bellhop] готово: {len(body.data.vertices)} вершин, {tris} треугольников, "
-          f"{len(body.data.materials)} материалов, {len(BONES)} костей")
+    tris = sum(len(p.vertices) - 2 for o in objects for p in o.data.polygons)
+    print(f"[bellhop] готово: {len(objects)} объектов, {tris} треугольников, "
+          f"{len({m.name for o in objects for m in o.data.materials})} материалов, {len(BONES)} костей")
+    for o in objects:
+        print(f"    {o.name:18s} {sum(len(p.vertices) - 2 for p in o.data.polygons):6d} tris  "
+              f"{', '.join(m.name for m in o.data.materials)}")
 
     if "--" in sys.argv:
         out = sys.argv[sys.argv.index("--") + 1:]

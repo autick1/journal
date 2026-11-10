@@ -41,8 +41,13 @@ def parse_args():
 
 
 def select_export_objects():
-    coll = bpy.data.collections.get(EXPORT_COLLECTION)
-    objs = list(coll.all_objects) if coll and coll.all_objects else list(bpy.context.selected_objects)
+    objs = []
+    for cname in (EXPORT_COLLECTION, "Bellhop"):          # "Bellhop" — коллекция build_bellhop.py
+        coll = bpy.data.collections.get(cname)
+        if coll and coll.all_objects:
+            objs = list(coll.all_objects)
+            break
+    objs = objs or list(bpy.context.selected_objects)
     if not objs:
         raise RuntimeError(f"Нечего экспортировать: коллекция '{EXPORT_COLLECTION}' пуста и ничего не выделено")
     bpy.ops.object.select_all(action='DESELECT')
@@ -105,9 +110,39 @@ def export_glb(path):
     bpy.ops.export_scene.gltf(**{k: v for k, v in kwargs.items() if k in props})
 
 
+def flatten_materials():
+    """Процедурные ноды не экспортируются в FBX/glTF (модель стала бы белой).
+    Для материалов со свойствами flat_* временно отключаем ноды от Base Color /
+    Roughness / Metallic и подставляем плоские PBR-значения. Возвращает функцию отката."""
+    restore = []
+    for mat in bpy.data.materials:
+        if "flat_color" not in mat or not mat.node_tree:
+            continue
+        bsdf = next((n for n in mat.node_tree.nodes if n.type == 'BSDF_PRINCIPLED'), None)
+        if bsdf is None:
+            continue
+        for sock, key in (("Base Color", "flat_color"), ("Roughness", "flat_roughness"),
+                          ("Metallic", "flat_metallic")):
+            inp = bsdf.inputs[sock]
+            old_val = tuple(inp.default_value) if hasattr(inp.default_value, "__len__") else inp.default_value
+            links = [(l.from_socket, l.to_socket) for l in inp.links]
+            for l in list(inp.links):
+                mat.node_tree.links.remove(l)
+            inp.default_value = tuple(mat[key]) if sock == "Base Color" else float(mat[key])
+            restore.append((mat, inp, old_val, links))
+
+    def undo():
+        for mat, inp, old_val, links in restore:
+            inp.default_value = old_val
+            for a, b in links:
+                mat.node_tree.links.new(a, b)
+    return undo
+
+
 def main():
     engine, out = parse_args()
     out = bpy.path.abspath(out)
+    undo_materials = flatten_materials()
     select_export_objects()
     name = base_name()
     done = []
@@ -123,6 +158,7 @@ def main():
         p = os.path.join(d, f"{name}.glb")
         export_glb(p)
         done.append(p)
+    undo_materials()
     if not done:
         raise ValueError(f"Неизвестный пресет '{engine}'. Варианты: unity, unreal, godot, generic")
     for p in done:
