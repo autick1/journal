@@ -249,8 +249,9 @@ def main():
     # HumanoidRootPart — бокс в тазу
     hrp_me = bpy.data.meshes.new("HumanoidRootPart")
     bm = bmesh.new()
-    c = Vector(J["root"]) + Vector((0, 0, 0.1))
-    bmesh.ops.create_cube(bm, size=1.0, matrix=Matrix.Translation(c) @ Matrix.Diagonal((0.3, 0.2, 0.3, 1)))
+    # маленький и целиком внутри таза/живота — даже если Transparency не выставлен, его не видно
+    c = Vector((-0.08, 0.12, 0.50))           # подобрано перебором: все 8 углов внутри тела
+    bmesh.ops.create_cube(bm, size=1.0, matrix=Matrix.Translation(c) @ Matrix.Diagonal((0.08, 0.07, 0.14, 1)))
     bm.to_mesh(hrp_me)
     bm.free()
     hrp = bpy.data.objects.new("HumanoidRootPart", hrp_me)
