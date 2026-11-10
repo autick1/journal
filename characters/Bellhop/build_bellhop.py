@@ -27,9 +27,9 @@ from mathutils import Matrix, Vector
 # ----------------------------------------------------------------- параметры
 SEED = 7
 CLOTH_JITTER = 0.004            # «мятость» ткани, м
-HEAD_CENTER = Vector((0, -0.15, 2.13))
-HEAD_TILT_DEG = 15              # наклон головы вперёд
-FINGER_LEN = 0.30               # длина когтистых пальцев, м
+HEAD_CENTER = Vector((0, -0.24, 2.10))
+HEAD_TILT_DEG = 18              # наклон головы вперёд
+FINGER_LEN = 0.34               # длина когтистых пальцев, м
 
 COLORS = {
     "Jacket": ((0.20, 0.018, 0.022, 1), 0.85, 0.0),
@@ -51,7 +51,7 @@ PARTS = []      # созданные объекты-части до объеди
 def get_material(name):
     full = f"M_Bellhop_{name}"
     mat = bpy.data.materials.get(full) or bpy.data.materials.new(full)
-    mat.use_nodes = True
+    mat.use_nodes = True if bpy.app.version < (5, 0) else mat.use_nodes
     bsdf = mat.node_tree.nodes.get("Principled BSDF")
     if name == "Eyes":
         color, rough, metal = (1, 1, 1, 1), 0.3, 0.0
@@ -193,15 +193,15 @@ def bone(name, head, tail, parent=None):
 def define_skeleton():
     bone("pelvis", (0, 0.02, 1.25), (0, 0.02, 1.38))
     bone("spine_01", (0, 0.02, 1.38), (0, 0.025, 1.60), "pelvis")
-    bone("spine_02", (0, 0.025, 1.60), (0, 0.0, 1.82), "spine_01")
-    bone("spine_03", (0, 0.0, 1.82), (0, -0.03, 1.93), "spine_02")
-    bone("neck", (0, -0.03, 1.93), (0, -0.11, 2.06), "spine_03")
-    bone("head", (0, -0.11, 2.06), (0, -0.19, 2.28), "neck")
+    bone("spine_02", (0, 0.025, 1.60), (0, -0.01, 1.82), "spine_01")
+    bone("spine_03", (0, -0.01, 1.82), (0, -0.07, 1.93), "spine_02")
+    bone("neck", (0, -0.07, 1.93), (0, -0.20, 2.03), "spine_03")
+    bone("head", (0, -0.20, 2.03), (0, -0.30, 2.24), "neck")
     for s, sfx in ((1, "l"), (-1, "r")):
-        bone(f"clavicle_{sfx}", (0.03 * s, -0.02, 1.90), (0.22 * s, 0.0, 1.89), "spine_03")
-        bone(f"upperarm_{sfx}", (0.24 * s, 0.0, 1.88), (0.33 * s, 0.0, 1.45), f"clavicle_{sfx}")
-        bone(f"lowerarm_{sfx}", (0.33 * s, 0.0, 1.45), (0.40 * s, -0.04, 1.02), f"upperarm_{sfx}")
-        bone(f"hand_{sfx}", (0.40 * s, -0.04, 1.02), (0.43 * s, -0.06, 0.92), f"lowerarm_{sfx}")
+        bone(f"clavicle_{sfx}", (0.03 * s, -0.05, 1.90), (0.22 * s, -0.04, 1.88), "spine_03")
+        bone(f"upperarm_{sfx}", (0.24 * s, -0.04, 1.87), (0.34 * s, -0.08, 1.38), f"clavicle_{sfx}")
+        bone(f"lowerarm_{sfx}", (0.34 * s, -0.08, 1.38), (0.40 * s, -0.12, 0.88), f"upperarm_{sfx}")
+        bone(f"hand_{sfx}", (0.40 * s, -0.12, 0.88), (0.43 * s, -0.14, 0.78), f"lowerarm_{sfx}")
         for fname, path in finger_paths(s).items():
             mid = len(path) // 2
             bone(f"{fname}_01_{sfx}", path[0], path[mid], f"hand_{sfx}")
@@ -213,13 +213,13 @@ def define_skeleton():
 
 def finger_paths(s):
     """Пути пальцев: 4 когтя + большой. Кисть висит, ладонь смотрит внутрь (к телу)."""
-    knuckle = Vector((0.43 * s, -0.06, 0.92))
+    knuckle = Vector((0.43 * s, -0.14, 0.78))
     L = FINGER_LEN
     paths = {}
     for name, dy, scale in (("index", -0.03, 0.95), ("middle", -0.01, 1.0),
                             ("ring", 0.01, 0.95), ("pinky", 0.03, 0.8)):
         base = knuckle + Vector((0, dy, 0))
-        spread = dy * 2.2
+        spread = dy * 3.0
         l = L * scale
         paths[name] = [
             base,
@@ -227,7 +227,7 @@ def finger_paths(s):
             base + Vector((0.015 * s, spread * 0.8 - 0.02, -0.66 * l)),
             base + Vector((-0.03 * s, spread - 0.05, -1.0 * l)),
         ]
-    tb = Vector((0.41 * s, -0.085, 0.985))
+    tb = Vector((0.41 * s, -0.165, 0.845))
     paths["thumb"] = [tb, tb + Vector((0.005 * s, -0.05, -0.06)),
                       tb + Vector((-0.01 * s, -0.09, -0.13)), tb + Vector((-0.04 * s, -0.11, -0.19))]
     return paths
@@ -235,14 +235,14 @@ def finger_paths(s):
 
 # ----------------------------------------------------------------- тело
 JACKET_RINGS = [  # z, y-смещение (горб), (rx, ry)
-    (1.22, 0.020, (0.170, 0.125)),
-    (1.32, 0.025, (0.150, 0.112)),
-    (1.45, 0.030, (0.128, 0.100)),
-    (1.60, 0.025, (0.150, 0.110)),
-    (1.75, 0.015, (0.190, 0.120)),
-    (1.87, -0.005, (0.250, 0.120)),
-    (1.94, -0.025, (0.200, 0.100)),
-    (1.985, -0.035, (0.080, 0.065)),
+    (1.22, 0.030, (0.170, 0.125)),
+    (1.32, 0.035, (0.150, 0.112)),
+    (1.45, 0.040, (0.128, 0.100)),
+    (1.60, 0.035, (0.150, 0.110)),
+    (1.75, 0.010, (0.190, 0.120)),
+    (1.87, -0.030, (0.250, 0.120)),
+    (1.94, -0.060, (0.200, 0.100)),
+    (1.985, -0.080, (0.080, 0.065)),
 ]
 
 
@@ -258,7 +258,8 @@ def build_torso():
     bm = bmesh.new()
     tube(bm, [(0, y, z) for z, y, _ in JACKET_RINGS], [r for *_, r in JACKET_RINGS], segs=16, sub=3)
     jitter(bm, CLOTH_JITTER)
-    spine = ["pelvis", "spine_01", "spine_02", "spine_03", "clavicle_l", "clavicle_r"]
+    # бёдра тоже влияют на подол, чтобы ноги не протыкали пиджак при шаге
+    spine = ["pelvis", "spine_01", "spine_02", "spine_03", "clavicle_l", "clavicle_r", "thigh_l", "thigh_r"]
     make_part("Jacket", bm, "Jacket", spine)
 
     # золотая кайма по низу пиджака
@@ -266,15 +267,15 @@ def build_torso():
     z, y, r = JACKET_RINGS[0]
     tube(bm, [(0, y, z - 0.003), (0, y, z + 0.022)],
          [(r[0] + 0.006, r[1] + 0.006), (r[0] + 0.004, r[1] + 0.004)], segs=16, sub=1)
-    make_part("HemTrim", bm, "Gold", ["pelvis", "spine_01"])
+    make_part("HemTrim", bm, "Gold", ["pelvis", "spine_01", "thigh_l", "thigh_r"])
 
     # стоячий воротник + золотой кант
     bm = bmesh.new()
-    tube(bm, [(0, -0.035, 1.95), (0, -0.045, 2.02)], [(0.075, 0.065), (0.07, 0.06)], segs=12, sub=1)
+    tube(bm, [(0, -0.08, 1.95), (0, -0.10, 2.02)], [(0.075, 0.065), (0.07, 0.06)], segs=12, sub=1)
     jitter(bm, CLOTH_JITTER * 0.5)
     make_part("Collar", bm, "Jacket", ["spine_03", "neck"])
     bm = bmesh.new()
-    tube(bm, [(0, -0.045, 2.012), (0, -0.046, 2.03)], [(0.076, 0.066), (0.074, 0.064)], segs=12, sub=1)
+    tube(bm, [(0, -0.098, 2.012), (0, -0.101, 2.03)], [(0.076, 0.066), (0.074, 0.064)], segs=12, sub=1)
     make_part("CollarTrim", bm, "Gold", ["spine_03", "neck"])
 
     # пуговицы: 2 ряда по 3
@@ -289,10 +290,10 @@ def build_torso():
     for s, sfx in ((1, "l"), (-1, "r")):
         bm = bmesh.new()
         rot = Matrix.Rotation(math.radians(-10 * s), 3, 'Y')
-        box(bm, Vector((0.20 * s, -0.005, 1.915)), (0.12, 0.13, 0.022), rot)
+        box(bm, Vector((0.20 * s, -0.04, 1.905)), (0.12, 0.13, 0.022), rot)
         make_part(f"Epaulette_{sfx}", bm, "Jacket", [f"clavicle_{sfx}", f"upperarm_{sfx}"])
         bm = bmesh.new()
-        box(bm, Vector((0.20 * s, -0.005, 1.910)), (0.13, 0.14, 0.012), rot)
+        box(bm, Vector((0.20 * s, -0.04, 1.900)), (0.13, 0.14, 0.012), rot)
         make_part(f"EpauletteTrim_{sfx}", bm, "Gold", [f"clavicle_{sfx}", f"upperarm_{sfx}"])
 
 
@@ -323,7 +324,7 @@ def build_arms():
         # когтистые пальцы
         for fname, path in finger_paths(s).items():
             bm = bmesh.new()
-            tube(bm, path, [0.013, 0.011, 0.008, 0.0], segs=6, sub=3)
+            tube(bm, path, [0.016, 0.013, 0.009, 0.0], segs=6, sub=3)
             make_part(f"Finger_{fname}_{sfx}", bm, "Skin",
                       [f"hand_{sfx}", f"{fname}_01_{sfx}", f"{fname}_02_{sfx}"])
 
@@ -332,9 +333,9 @@ def build_legs():
     for s, sfx in ((1, "l"), (-1, "r")):
         hip, knee, ankle = BONES[f"thigh_{sfx}"][0], BONES[f"thigh_{sfx}"][1], BONES[f"calf_{sfx}"][1]
         bm = bmesh.new()
-        tube(bm, [hip + Vector((0, 0, 0.06)), hip.lerp(knee, 0.5), knee, knee.lerp(ankle, 0.6),
+        tube(bm, [hip + Vector((0, 0, 0.015)), hip.lerp(knee, 0.5), knee, knee.lerp(ankle, 0.6),
                   ankle + Vector((0, 0, 0.01))],
-             [0.075, 0.058, 0.050, 0.056, 0.068], segs=10, sub=4)
+             [0.060, 0.050, 0.044, 0.052, 0.070], segs=10, sub=4)
         jitter(bm, CLOTH_JITTER)
         make_part(f"Pants_{sfx}", bm, "Pants", ["pelvis", f"thigh_{sfx}", f"calf_{sfx}"])
 
@@ -357,7 +358,7 @@ def build_head():
 
     # шея
     bm = bmesh.new()
-    tube(bm, [(0, -0.02, 1.90), (0, -0.07, 2.0), (0, -0.12, 2.07)], [0.034, 0.032, 0.036], segs=8, sub=2)
+    tube(bm, [(0, -0.06, 1.90), (0, -0.14, 1.99), (0, -0.21, 2.04)], [0.034, 0.032, 0.036], segs=8, sub=2)
     make_part("Neck", bm, "Skin", ["spine_03", "neck", "head"])
 
     # голова — вытянутая, широкая в челюсти
@@ -369,24 +370,25 @@ def build_head():
     finish(bm, "Head", "Skin")
 
     # зубы — две чередующиеся дуги длинных клыков, широкая улыбка
-    def mouth_point(angle_deg, z, out=0.004):
+    def mouth_point(angle_deg, z, out=0.003):
         a = math.radians(angle_deg)
-        rx, ry = 0.106, 0.092
-        return Vector((rx * math.sin(a) * (1 + out), -ry * math.cos(a) - out, z))
+        rx, ry = 0.104, 0.091
+        smile = 0.025 * (abs(angle_deg) / 72) ** 2      # уголки улыбки вверх
+        return Vector((rx * math.sin(a), -ry * math.cos(a) - out, z + smile))
 
     bm = bmesh.new()
-    for i in range(13):
-        a = -78 + i * 13
-        length = 0.052 * (1 - 0.45 * abs(a) / 78)
-        base = mouth_point(a, -0.028)
-        tip = base + Vector((0, -0.004, -length))
-        tube(bm, [base, base.lerp(tip, 0.5), tip], [0.0072, 0.006, 0.0], segs=5, sub=1)
-    for i in range(12):
-        a = -71.5 + i * 13
-        length = 0.045 * (1 - 0.45 * abs(a) / 78)
-        base = mouth_point(a, -0.088)
-        tip = base + Vector((0, -0.004, length))
-        tube(bm, [base, base.lerp(tip, 0.5), tip], [0.0068, 0.0055, 0.0], segs=5, sub=1)
+    for i in range(13):                                 # верхний ряд — вниз
+        a = -72 + i * 12
+        length = 0.050 * (1 - 0.5 * abs(a) / 72)
+        base = mouth_point(a, -0.012)
+        tip = base + Vector((0, -0.006, -length))
+        tube(bm, [base, base.lerp(tip, 0.5), tip], [0.0075, 0.006, 0.0], segs=5, sub=1)
+    for i in range(12):                                 # нижний ряд — вверх, между верхними
+        a = -66 + i * 12
+        length = 0.044 * (1 - 0.5 * abs(a) / 72)
+        base = mouth_point(a, -0.072)
+        tip = base + Vector((0, -0.006, length))
+        tube(bm, [base, base.lerp(tip, 0.5), tip], [0.007, 0.0055, 0.0], segs=5, sub=1)
     finish(bm, "Teeth", "Teeth", smooth=True)
 
     # светящиеся глаза
@@ -398,17 +400,17 @@ def build_head():
     # шапка-таблетка с козырьком и золотыми полосами
     bm = bmesh.new()
     tube(bm, [(0, 0.008, 0.075), (0, 0.008, 0.125), (0, 0.008, 0.175)],
-         [(0.104, 0.108), (0.107, 0.111), (0.112, 0.116)], segs=16, sub=1)
+         [(0.094, 0.098), (0.097, 0.101), (0.101, 0.105)], segs=16, sub=1)
     jitter(bm, CLOTH_JITTER * 0.5)
     finish(bm, "Hat", "Jacket")
     bm = bmesh.new()
-    for z0, z1 in ((0.082, 0.097), (0.150, 0.160)):
-        r0 = 0.104 + 0.008 * (z0 - 0.075) / 0.1
+    for z0, z1 in ((0.074, 0.090), (0.150, 0.160)):
+        r0 = 0.094 + 0.007 * (z0 - 0.075) / 0.1
         tube(bm, [(0, 0.008, z0), (0, 0.008, z1)], [(r0 + 0.005, r0 + 0.009), (r0 + 0.006, r0 + 0.010)],
              segs=16, sub=1)
     finish(bm, "HatTrim", "Gold")
     bm = bmesh.new()
-    box(bm, Vector((0, -0.115, 0.074)), (0.15, 0.06, 0.008), Matrix.Rotation(math.radians(-12), 3, 'X'))
+    box(bm, Vector((0, -0.105, 0.072)), (0.13, 0.05, 0.008), Matrix.Rotation(math.radians(-12), 3, 'X'))
     finish(bm, "HatVisor", "Shoes")
 
 
