@@ -25,6 +25,7 @@ import numpy as np
 from mathutils import Matrix, Vector
 
 LOW_TRIS = 19000
+HEAD_ZONE = 0.30                # кровать: доля длины у изголовья — подушки и простыня (белые)
 CELL = 0.01                     # шаг растра силуэтов, м
 
 PRESETS = {
@@ -37,6 +38,7 @@ COLORS = {
     "wood":   ((0.10, 0.032, 0.020), (0.035, 0.011, 0.007), 0.45),
     "velvet": ((0.16, 0.007, 0.012), (0.065, 0.004, 0.007), 0.68),
     "linen":  ((0.80, 0.77, 0.70), (0.62, 0.59, 0.53), 0.85),
+    "duvet":  ((0.20, 0.012, 0.022), (0.10, 0.006, 0.012), 0.75),
 }
 
 
@@ -182,6 +184,16 @@ def label_faces(high, low, kind, preset):
                   & (np.abs(cen[:, 0]) < 0.97 * hi[0]))
         lab[:] = 0
         lab[inside] = 1
+        # свисающий край простыни у изголовья: снаружи, сбоку от столбиков, выше царги
+        flap = ((np.abs(cen[:, 0]) > 0.86 * hi[0]) & (cen[:, 1] > lo[1] + 0.07 * yspan)
+                & (cen[:, 1] < hi[1] - 0.055 * yspan) & (cen[:, 2] > lo[2] + 0.245 * H)
+                & (cen[:, 2] < lo[2] + 0.5 * H) & (np.abs(nrm[:, 0]) > 0.5))
+        lab[flap] = 1
+        inside |= flap
+        # одеяло (бордовое) — всё, кроме зоны у изголовья, где лежат подушки и отворот простыни
+        head_is_hi = hv[hv[:, 1] > hi[1] - 0.1 * yspan, 2].max() > hv[hv[:, 1] < lo[1] + 0.1 * yspan, 2].max()
+        dist_head = (hi[1] - cen[:, 1]) if head_is_hi else (cen[:, 1] - lo[1])
+        lab[inside & (dist_head > HEAD_ZONE * yspan)] = 2
         return lab
 
     fw = int(round(preset["frame"] / CELL))
@@ -353,6 +365,8 @@ def main():
     low.data.materials.clear()                       # у импорта из Meshy свой белый материал — убрать
     low.data.materials.append(material("Wood", "wood"))
     low.data.materials.append(material("Fabric", preset["fabric"]))
+    if kind == "bed":
+        low.data.materials.append(material("Duvet", "duvet"))
     low.data.polygons.foreach_set("material_index", lab.astype(np.int32))
     low.data.update()
     bpy.ops.wm.save_as_mainfile(filepath=os.path.join(out, f"{name}_regions.blend"))
