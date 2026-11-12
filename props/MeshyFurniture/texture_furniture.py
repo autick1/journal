@@ -258,7 +258,7 @@ def new_image(name, res, cs="sRGB"):
     return img
 
 
-def bake(low, kind, img, high=None, **kw):
+def bake(low, kind, img, high=None, cage=0.015, dist=0.03, **kw):
     for mat in low.data.materials:
         nodes = mat.node_tree.nodes
         n = nodes.get("BAKE") or nodes.new("ShaderNodeTexImage")
@@ -271,8 +271,8 @@ def bake(low, kind, img, high=None, **kw):
     if high is not None:
         high.select_set(True)
         bpy.context.view_layer.objects.active = low
-        sc.render.bake.cage_extrusion = 0.015
-        sc.render.bake.max_ray_distance = 0.03
+        sc.render.bake.cage_extrusion = cage
+        sc.render.bake.max_ray_distance = dist
     sc.render.bake.margin = 4
     t = time.time()
     bpy.ops.object.bake(type=kind, **kw)
