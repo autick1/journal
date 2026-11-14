@@ -7,7 +7,7 @@
 	  * закрепляет детали (Anchored);
 	  * двери шкафа и комнаты открываются, ящики комода и тумбочки выдвигаются (подсказка E);
 	  * часы показывают текущее время, маятник качается;
-	  * в камине горит огонь, лампы светят, на банкетку можно сесть.
+	  * в камине горит огонь, лампы, бра и люстра светят, на банкетку можно сесть.
 	Предметы, добавленные в Workspace позже (копии), настраиваются автоматически.
 ]]
 
@@ -122,15 +122,15 @@ local function makeMover(main, group, fn, label)
 	end)
 end
 
-local function setupClock(model)
-	local face = model:FindFirstChild("Clock_Face", true)
-	local body = model:FindFirstChild("Clock_Body", true)
+local function setupClock(model, item)
+	local face = model:FindFirstChild(item .. "_Face", true)
+	local body = model:FindFirstChild(item .. "_Body", true)
 	if not (face and body) then return end
 	local _, front, _, _, up = axes(body, face)
 	local c = face.Position
-	local hour = model:FindFirstChild("Clock_HourHand", true)
-	local minute = model:FindFirstChild("Clock_MinuteHand", true)
-	local pend = model:FindFirstChild("Clock_Pendulum", true)
+	local hour = model:FindFirstChild(item .. "_HourHand", true)
+	local minute = model:FindFirstChild(item .. "_MinuteHand", true)
+	local pend = model:FindFirstChild(item .. "_Pendulum", true)
 	local h0, m0, p0 = hour and hour.CFrame, minute and minute.CFrame, pend and pend.CFrame
 	local pivot = pend and (pend.Position + up * pend.Size.Y / 2)
 	local function rot(center, a)
@@ -147,7 +147,7 @@ local function setupClock(model)
 end
 
 local function decorate(p)
-	if p.Name:match("_Shade$") then
+	if p.Name:match("_Shades?$") or p.Name:match("_Flames$") then
 		local l = Instance.new("PointLight")
 		l.Color, l.Brightness, l.Range, l.Shadows = Color3.fromRGB(255, 190, 120), 1.6, 16, true
 		l.Parent = p
@@ -201,7 +201,9 @@ local function setupModel(model)
 			makeMover(main, group, fn, LABELS[itemOf(name)] or itemOf(name))
 		end
 	end
-	if model:FindFirstChild("Clock_Face", true) then setupClock(model) end
+	for name, kind in pairs(BEHAVIORS) do          -- часы: стрелки и маятник
+		if kind == "hour" and model:FindFirstChild(name, true) then setupClock(model, itemOf(name)) end
+	end
 end
 
 local function scan(root)

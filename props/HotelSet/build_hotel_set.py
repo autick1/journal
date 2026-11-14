@@ -52,6 +52,9 @@ PALETTE = {
     "Paper":      ((232, 220, 196), "SmoothPlastic", 0, 0, 0.6),
     "Black":      ((22, 18, 16), "SmoothPlastic", 0, 0, 0.5),
     "Canvas":     ((90, 90, 80), "SmoothPlastic", 0, 0, 0.8),
+    "Rug":        ((110, 20, 28), "Fabric", 0, 0, 0.95),
+    "Wax":        ((236, 228, 206), "SmoothPlastic", 0, 0, 0.5),
+    "Flame":      ((255, 190, 90), "Neon", 0.1, 0, 0.5),
 }
 
 
@@ -898,6 +901,241 @@ def wall_panel(it):
                        bm, (0, -0.004, 0))
 
 
+# ============================================================================= второй набор (люстра, ковёр, бра, столы, часы)
+ROMAN = ["XII", "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI"]
+
+
+def roman_dial(it, part, center, radius, size, y):
+    """Римские цифры по кругу на циферблате, плоскость XZ, лицом в -Y."""
+    cx, cz = center
+    for k, s in enumerate(ROMAN):
+        a = k * PI / 6
+        it.add(part, "Black", text_mesh(s, size, 0.0008),
+               (cx + radius * math.sin(a), y, cz + radius * math.cos(a)), (PI / 2, 0, 0))
+
+
+def clock_hands(it, center, y, hour_len, min_len, w=1.0):
+    cx, cz = center
+    it.bx("HourHand", "Black", (cx - 0.006 * w, cx + 0.006 * w), (y - 0.003, y), (cz - 0.015, cz + hour_len), 0)
+    it.add("HourHand", "Black", bm_prism(arc(cx, cz + hour_len * 0.75, 0.018 * w, 0.025 * w, 0, 2 * PI, 12)[:-1], y - 0.003, y))
+    it.bx("MinuteHand", "Black", (cx - 0.004 * w, cx + 0.004 * w), (y - 0.007, y - 0.004), (cz - 0.02, cz + min_len), 0)
+    it.add("MinuteHand", "Black", bm_prism(arc(cx, cz + min_len * 0.8, 0.012 * w, 0.02 * w, 0, 2 * PI, 12)[:-1], y - 0.007, y - 0.004))
+    it.behaviors.append((f"{it.name}_HourHand", "hour"))
+    it.behaviors.append((f"{it.name}_MinuteHand", "minute"))
+
+
+def chandelier(it):
+    B = "Body"
+    it.lathe(B, "Wood", [(0, 0.0), (0.012, 0.01), (0.03, 0.04), (0.02, 0.08), (0.035, 0.11), (0.09, 0.15), (0.12, 0.2),
+                         (0.11, 0.25), (0.07, 0.28), (0.035, 0.3), (0.05, 0.34), (0.03, 0.38), (0.022, 0.45),
+                         (0.04, 0.5), (0.025, 0.54), (0.035, 0.57), (0.012, 0.6), (0, 0.61)], segs=20)
+    z = 0.6
+    for i in range(11):                                         # цепь
+        it.add("Chain", "Iron", bm_torus(0.022, 0.0055, 14, 6), (0, 0, z + 0.022), (PI / 2, 0, PI / 2 * (i % 2)))
+        z += 0.04
+    it.lathe(B, "Wood", [(0, z + 0.02), (0.03, z + 0.02), (0.08, z + 0.05), (0.085, z + 0.07), (0, z + 0.07)], segs=20)
+    for k in range(6):
+        a = k * PI / 3
+        ca, sa = math.cos(a), math.sin(a)
+        pts = [(r * ca, r * sa, zz) for r, zz in [(0.09, 0.22), (0.16, 0.18), (0.24, 0.17), (0.31, 0.2), (0.35, 0.26),
+                                                  (0.36, 0.32)]]
+        it.tube("Arms", "Wood", pts, 0.016, r_end=0.012)
+        it.tube("Arms", "Wood", [(r * ca, r * sa, zz) for r, zz in [(0.12, 0.27), (0.17, 0.3), (0.2, 0.28), (0.21, 0.24)]], 0.008)
+        x, y = 0.36 * ca, 0.36 * sa
+        it.lathe("Arms", "Wood", [(0, 0.31), (0.012, 0.31), (0.05, 0.33), (0.052, 0.34), (0.03, 0.34), (0.026, 0.37),
+                                  (0, 0.37)], (x, y, 0), segs=14)
+        it.cyl("Candles", "Wax", 0.016, 0.12, (x, y, 0.43), segs=12)
+        it.add("Candles", "Wax", bm_sphere(0.006, 6, 4), (x + 0.015 * ca, y + 0.015 * sa, 0.46), scale=(1, 1, 2.5))
+        it.add("Flames", "Flame", bm_sphere(0.012, 8, 6), (x, y, 0.505), scale=(0.7, 0.7, 2.0))
+    it.behaviors.append((f"{it.name}_Flames", "light"))
+
+
+def rug_texture(path, W=1024, H=720):
+    rnd = np.random.default_rng(11)
+    yy, xx = np.mgrid[0:H, 0:W].astype(float)
+    u, v = xx / W, yy / H
+    img = np.zeros((H, W, 3))
+    img[:] = [0.42, 0.07, 0.09]
+    d = np.abs((u * 14) % 1 - 0.5) + np.abs((v * 10) % 1 - 0.5)
+    img[d < 0.3] = [0.3, 0.04, 0.06]
+    img[(d > 0.22) & (d < 0.27)] = [0.55, 0.32, 0.18]
+    img[d < 0.07] = [0.62, 0.42, 0.22]
+    e = ((u - 0.5) / 0.2) ** 2 + ((v - 0.5) / 0.28) ** 2
+    img[e < 1.0] = [0.2, 0.03, 0.05]
+    img[(e > 0.88) & (e < 1.0)] = [0.62, 0.42, 0.22]
+    ring = (e > 0.45) & (e < 0.55)
+    img[ring] = [0.5, 0.1, 0.1]
+    pet = np.abs(np.sin(np.arctan2(v - 0.5, u - 0.5) * 8)) * 0.35
+    img[(e < pet + 0.12)] = [0.48, 0.09, 0.1]
+    img[e < 0.05] = [0.62, 0.42, 0.22]
+    b = np.minimum(np.minimum(xx, W - 1 - xx), np.minimum(yy, H - 1 - yy))
+    along = np.where(np.minimum(yy, H - 1 - yy) <= np.minimum(xx, W - 1 - xx), xx, yy)
+    t = (b - 22) / 46.0
+    img[b < 70] = [0.16, 0.03, 0.04]
+    zig = np.abs(((along / 36) % 1) - 0.5) * 2
+    img[(b >= 22) & (b < 68) & (np.abs(zig - t) < 0.14)] = [0.62, 0.42, 0.22]
+    img[(b >= 14) & (b < 19)] = [0.62, 0.42, 0.22]
+    img[(b >= 70) & (b < 75)] = [0.62, 0.42, 0.22]
+    img[b < 6] = [0.12, 0.02, 0.03]
+    img *= (1 + rnd.normal(0, 0.06, (H, W)))[..., None]
+    wear = np.exp(-(((u - 0.4) / 0.25) ** 2 + ((v - 0.55) / 0.3) ** 2))
+    img *= (1 - 0.18 * wear)[..., None]
+    img *= 0.62                                   # тёмный бордовый, как на референсе
+    img = np.clip(img, 0, 1)
+    px = np.concatenate([img, np.ones((H, W, 1))], axis=2)
+    im = bpy.data.images.new("Rug_Pattern", W, H)
+    im.pixels = px.astype(np.float32).ravel()
+    im.filepath_raw = path
+    im.file_format = 'PNG'
+    im.save()
+
+
+def rug(it, tex_path):
+    L, Wd = 2.2, 1.55
+    it.bx("Body", "Rug", (-L / 2, L / 2), (-Wd / 2, Wd / 2), (0, 0.01), 0.003)
+    bm = vf_bm([(-L / 2, -Wd / 2, 0), (L / 2, -Wd / 2, 0), (L / 2, Wd / 2, 0), (-L / 2, Wd / 2, 0)], [[0, 1, 2, 3]], recalc=False)
+    it.add("Body", "Rug", bm, (0, 0, 0.0115), uvs=[[(0, 0), (1, 0), (1, 1), (0, 1)]])
+    rug_texture(tex_path)
+
+
+def bm_pleated(rb, rt, z0, z1, n=28, amp=0.06, wall=0.004):
+    verts, faces = [], []
+    for layer, dr in ((0, 0.0), (1, -wall)):
+        for z, r in ((z0, rb), (z1, rt)):
+            for k in range(n):
+                a = 2 * PI * k / n
+                rr = (r + dr) * (1 + amp * (1 if k % 2 == 0 else -1))
+                verts.append((rr * math.cos(a), rr * math.sin(a), z))
+    O0, O1, I0, I1 = 0, n, 2 * n, 3 * n
+    for k in range(n):
+        j = (k + 1) % n
+        faces += [[O0 + k, O0 + j, O1 + j, O1 + k], [I0 + k, I1 + k, I1 + j, I0 + j],
+                  [O0 + k, I0 + k, I0 + j, O0 + j], [O1 + k, O1 + j, I1 + j, I1 + k]]
+    return vf_bm(verts, faces)
+
+
+def sconce(it):
+    plate = [(0.06 * math.sin(t) * (1.2 - 0.5 * math.cos(t) ** 2), 0.17 - 0.16 * math.cos(t)) for t in np.linspace(0, 2 * PI, 33)[:-1]]
+    plate = [(x * 1.4, z) for x, z in plate]
+    it.prism("Body", "Wood", plate, -0.02, 0.0)
+    it.prism("Body", "Wood", [(x * 0.7, 0.17 + (z - 0.17) * 0.75) for x, z in plate], -0.032, -0.02)
+    it.lathe("Body", "Wood", [(0, 0), (0.02, 0), (0.03, 0.025), (0.035, 0.05), (0, 0.06)], (0, -0.04, 0.12), (PI / 2, 0, 0), segs=14)
+    it.lathe("Body", "Wood", [(0, 0.0), (0.012, 0.005), (0.02, 0.025), (0.008, 0.05), (0, 0.06)], (0, -0.012, -0.05), segs=10)
+    for sx in (-1, 1):
+        pts = [(sx * x, y, z) for x, y, z in [(0.0, -0.06, 0.12), (0.06, -0.09, 0.1), (0.12, -0.12, 0.11),
+                                             (0.16, -0.14, 0.15), (0.17, -0.15, 0.2)]]
+        it.tube("Arms", "WoodDark", pts, 0.012)
+        x = sx * 0.17
+        it.lathe("Arms", "WoodDark", [(0, 0.2), (0.04, 0.2), (0.045, 0.21), (0.02, 0.215), (0.018, 0.25), (0, 0.25)],
+                 (x, -0.15, 0), segs=14)
+        it.cyl("Arms", "WoodDark", 0.004, 0.05, (x, -0.15, 0.27), segs=6)
+        it.add("Shades", "Shade", bm_pleated(0.1, 0.065, 0.24, 0.42), (x, -0.15, 0))
+        for zz, rr in ((0.24, 0.102), (0.42, 0.067)):
+            it.add("Trim", "Brass", bm_torus(rr, 0.004, 28, 5), (x, -0.15, zz))
+
+
+def round_table(it):
+    it.lathe("Body", "Wood", [(0, 0.725), (0.53, 0.725), (0.548, 0.732), (0.555, 0.745), (0.55, 0.757), (0.535, 0.762),
+                              (0, 0.762)], segs=56)
+    it.lathe("Body", "Wood", [(0, 0.66), (0.47, 0.66), (0.48, 0.67), (0.48, 0.725), (0, 0.725)], segs=48)
+    it.lathe("Body", "Wood", [(0, 0.12), (0.11, 0.12), (0.11, 0.15), (0.08, 0.18), (0.06, 0.24), (0.095, 0.32),
+                              (0.1, 0.36), (0.07, 0.42), (0.055, 0.5), (0.065, 0.56), (0.09, 0.6), (0.16, 0.64),
+                              (0.2, 0.66), (0, 0.66)], segs=24)
+    for k in range(4):
+        a = PI / 4 + k * PI / 2
+        pts = [(r * math.cos(a), r * math.sin(a), z) for r, z in
+               [(0.06, 0.2), (0.14, 0.17), (0.22, 0.12), (0.29, 0.07), (0.34, 0.045), (0.37, 0.05), (0.38, 0.07)]]
+        it.tube("Body", "Wood", pts, 0.045, segs=10, r_end=0.03)
+        it.add("Body", "Wood", bm_sphere(0.04, 12, 8), (0.36 * math.cos(a), 0.36 * math.sin(a), 0.035), scale=(1.3, 1.3, 0.9))
+
+
+def rect_table(it):
+    L, D, H = 1.1, 0.62, 0.5
+    it.bx("Body", "Wood", (-L / 2, L / 2), (-D / 2, D / 2), (H - 0.04, H), 0.012, 2)
+    it.bx("Body", "Wood", (-L / 2 + 0.05, L / 2 - 0.05), (-D / 2 + 0.05, D / 2 - 0.05), (H - 0.12, H - 0.04), 0.004)
+    it.bx("Body", "Wood", (-L / 2 + 0.045, L / 2 - 0.045), (-D / 2 + 0.045, D / 2 - 0.045), (H - 0.125, H - 0.11), 0.004)
+    prof = [(0, 0), (0.028, 0), (0.034, 0.03), (0.026, 0.06), (0.032, 0.1), (0.05, 0.17), (0.052, 0.21), (0.038, 0.26),
+            (0.03, 0.3), (0.04, 0.33), (0.035, 0.35), (0.038, H - 0.04), (0, H - 0.04)]
+    for sx in (-1, 1):
+        for sy in (-1, 1):
+            it.lathe("Body", "Wood", prof, (sx * (L / 2 - 0.085), sy * (D / 2 - 0.085), 0), segs=14)
+
+
+def grand_clock(it):
+    B = "Body"
+    for sx in (-1, 1):
+        for sy in (-1, 1):
+            it.lathe(B, "Wood", [(0, 0), (0.035, 0), (0.045, 0.02), (0.03, 0.05), (0, 0.06)],
+                     (sx * 0.23, sy * 0.12, 0), segs=10)
+    it.bx(B, "Wood", (-0.29, 0.29), (-0.18, 0.17), (0.05, 0.1), 0.01, 2)
+    it.bx(B, "Wood", (-0.27, 0.27), (-0.16, 0.16), (0.1, 0.42), 0.006)
+    it.bx(B, "Wood", (-0.19, 0.19), (-0.172, -0.16), (0.15, 0.37), 0.012, 2)
+    it.add(B, "Wood", bm_prism(arc(0, 0.26, 0.08, 0.05, 0, 2 * PI, 20)[:-1], -0.182, -0.172))
+    it.bx(B, "Wood", (-0.27, 0.27), (-0.175, 0.165), (0.42, 0.47), 0.01, 2)
+    it.bx(B, "Wood", (-0.21, 0.21), (0.11, 0.13), (0.47, 1.4))
+    for sx in (-1, 1):
+        it.bx(B, "Wood", sorted((sx * 0.19, sx * 0.21)), (-0.13, 0.13), (0.47, 1.4))
+        it.bx(B, "Wood", sorted((sx * 0.14, sx * 0.215)), (-0.145, -0.115), (0.47, 1.4), 0.004)
+        it.lathe(B, "Wood", [(0.016, 0.5), (0.024, 0.53), (0.016, 0.56), (0.016, 1.3), (0.024, 1.33), (0.016, 1.37)],
+                 (sx * 0.235, -0.13, 0), segs=10)
+    it.bx(B, "Wood", (-0.14, 0.14), (-0.145, -0.115), (0.47, 0.56), 0.004)
+    top_arch = [(x, 1.24 + 0.08 * math.sqrt(max(0, 1 - (x / 0.14) ** 2))) for x in np.linspace(0.14, -0.14, 16)]
+    it.prism(B, "Wood", [(-0.14, 1.4), (-0.14, 1.24)] + top_arch[::-1] + [(0.14, 1.24), (0.14, 1.4)], -0.145, -0.115)
+    it.prism("Glass", "Glass", [(-0.14, 0.56), (0.14, 0.56)] + top_arch, -0.132, -0.127)
+    it.bx(B, "Wood", (-0.27, 0.27), (-0.175, 0.165), (1.4, 1.45), 0.01, 2)
+    it.bx(B, "Wood", (-0.245, 0.245), (-0.15, 0.15), (1.45, 1.98), 0.004)
+    for sx in (-1, 1):
+        it.lathe(B, "Wood", [(0.018, 1.46), (0.026, 1.49), (0.018, 1.52), (0.018, 1.9), (0.026, 1.93), (0.018, 1.97)],
+                 (sx * 0.225, -0.165, 0), segs=10)
+    it.bx(B, "Wood", (-0.27, 0.27), (-0.18, 0.165), (1.98, 2.02), 0.01, 2)
+    for sx in (-1, 1):                                          # «лебединая шея» — резные завитки
+        pts = [(sx * x, -0.17, z) for x, z in [(0.26, 2.02), (0.24, 2.08), (0.18, 2.13), (0.11, 2.14), (0.07, 2.12),
+                                               (0.06, 2.09), (0.08, 2.075), (0.1, 2.09)]]
+        it.tube(B, "Wood", pts, 0.022, segs=10)
+        it.prism(B, "Wood", [(sx * x, z) for x, z in [(0.26, 2.02), (0.24, 2.07), (0.18, 2.11), (0.11, 2.12), (0.06, 2.02)]]
+                 if sx > 0 else [(sx * x, z) for x, z in [(0.06, 2.02), (0.11, 2.12), (0.18, 2.11), (0.24, 2.07), (0.26, 2.02)]],
+                 -0.16, 0.15)
+    it.lathe("Brass", "Brass", [(0, 2.02), (0.025, 2.02), (0.018, 2.05), (0.03, 2.08), (0.02, 2.11), (0.008, 2.16), (0, 2.18)], segs=12)
+    for sx in (-1, 1):
+        it.lathe("Brass", "Brass", [(0, 2.02), (0.015, 2.02), (0.02, 2.04), (0.008, 2.07), (0, 2.09)], (sx * 0.24, 0, 0), segs=10)
+    fz = 1.72
+    it.bx(B, "Wood", (-0.215, 0.215), (-0.163, -0.15), (1.47, 1.96), 0.004)
+    it.cyl("Face", "Paper", 0.17, 0.008, (0, -0.167, fz), (PI / 2, 0, 0), segs=48)
+    it.add("Brass", "Brass", bm_torus(0.172, 0.011, 48, 8), (0, -0.172, fz), (PI / 2, 0, 0))
+    roman_dial(it, "Numerals", (0, fz), 0.135, 0.032, -0.1725)
+    it.cyl("Numerals", "Black", 0.009, 0.01, (0, -0.18, fz), (PI / 2, 0, 0), segs=10)
+    clock_hands(it, (0, fz), -0.173, 0.075, 0.12)
+    it.bx("Pendulum", "Brass", (-0.006, 0.006), (-0.004, 0.004), (0.82, 1.38), 0.001)
+    for sx in (-1, 1):
+        it.tube("Pendulum", "Brass", [(sx * 0.006, 0, 1.3), (sx * 0.035, 0, 1.2), (sx * 0.045, 0, 1.08), (sx * 0.02, 0, 0.98),
+                                      (sx * 0.006, 0, 0.94)], 0.004, segs=6)
+    it.cyl("Pendulum", "Brass", 0.09, 0.014, (0, 0, 0.8), (PI / 2, 0, 0), segs=32)
+    it.add("Pendulum", "Brass", bm_torus(0.09, 0.008, 32, 6), (0, 0, 0.8), (PI / 2, 0, 0))
+    for x in (-0.09, 0.09):
+        it.cyl("Weights", "Brass", 0.026, 0.22, (x, 0.06, 1.12), segs=14)
+        it.tube("Weights", "Brass", [(x, 0.06, 1.23), (x, 0.06, 1.4)], 0.002, segs=4)
+    it.behaviors.append((f"{it.name}_Pendulum", "pendulum"))
+
+
+def wall_clock(it):
+    R = 0.25
+    cz = R + 0.04
+    it.lathe("Body", "Wood", [(R - 0.045, 0), (R, 0), (R + 0.012, 0.015), (R + 0.006, 0.035), (R - 0.01, 0.055),
+                              (R - 0.03, 0.06), (R - 0.045, 0.045)], (0, 0, cz), (PI / 2, 0, 0), segs=48, closed=True)
+    it.cyl("Body", "Wood", R - 0.04, 0.02, (0, -0.01, cz), (PI / 2, 0, 0), segs=40)
+    for k in range(12):                                         # резные «бусины» по ободу
+        a = k * PI / 6 + PI / 12
+        it.add("Body", "Wood", bm_sphere(0.022, 10, 6), (R * 0.98 * math.sin(a), -0.03, cz + R * 0.98 * math.cos(a)),
+               scale=(1, 0.8, 1.3), rot=(0, a, 0))
+    for zz, sz in ((cz + R + 0.03, 0.05), (cz - R - 0.03, 0.04)):
+        it.add("Body", "Wood", bm_prism(arc(0, zz, sz * 1.4, sz, 0, 2 * PI, 16)[:-1], -0.04, 0.0))
+    it.cyl("Face", "Paper", R - 0.04, 0.006, (0, -0.023, cz), (PI / 2, 0, 0), segs=48)
+    it.add("Numerals", "Black", bm_torus(R - 0.085, 0.0015, 48, 4), (0, -0.027, cz), (PI / 2, 0, 0))
+    roman_dial(it, "Numerals", (0, cz), R - 0.105, 0.036, -0.0275)
+    it.cyl("Cap", "Brass", 0.01, 0.01, (0, -0.036, cz), (PI / 2, 0, 0), segs=12)
+    clock_hands(it, (0, cz), -0.028, 0.1, 0.15, 1.2)
+
+
 ITEMS = [
     ("Wardrobe", wardrobe), ("Bookcase", bookcase), ("LuggageCart", luggage_cart), ("CoatRack", coat_rack),
     ("Plant", plant), ("Suitcase", lambda it: suitcase(it, "", (0.8, 0.42, 0.5), (0, 0, 0))),
@@ -905,12 +1143,16 @@ ITEMS = [
     ("Nightstand", nightstand), ("CoffeeTable", coffee_table), ("Bench", bench), ("Door", door),
     ("Fireplace", fireplace), ("Clock", clock), ("Mirror", mirror), ("LuggageRack", luggage_rack),
     ("Curtains", curtains), ("WallPanel", wall_panel),
+    ("Chandelier", chandelier), ("Rug", None), ("Sconce", sconce), ("RoundTable", round_table),
+    ("RectTable", rect_table), ("GrandClock", grand_clock), ("WallClock", wall_clock),
 ]
 RU = {"Wardrobe": "Шкаф", "Bookcase": "Книжный шкаф", "LuggageCart": "Тележка", "CoatRack": "Вешалка",
       "Plant": "Растение", "Suitcase": "Чемодан", "Painting": "Картина", "FloorLamp": "Торшер",
       "TableLamp": "Настольная лампа", "Dresser": "Комод", "Nightstand": "Тумбочка", "CoffeeTable": "Журнальный столик",
       "Bench": "Банкетка", "Door": "Дверь", "Fireplace": "Камин", "Clock": "Напольные часы", "Mirror": "Зеркало",
-      "LuggageRack": "Стеллаж для багажа", "Curtains": "Шторы", "WallPanel": "Панель на стену"}
+      "LuggageRack": "Стеллаж для багажа", "Curtains": "Шторы", "WallPanel": "Панель на стену",
+      "Chandelier": "Люстра", "Rug": "Ковёр", "Sconce": "Бра", "RoundTable": "Круглый стол",
+      "RectTable": "Столик", "GrandClock": "Резные часы", "WallClock": "Настенные часы"}
 
 
 # ----------------------------------------------------------------------------- сборка в Blender
@@ -925,7 +1167,7 @@ def make_material(key, tex=None):
         b.inputs["Metallic"].default_value = 1.0
     if key == "Glass":
         b.inputs["Alpha"].default_value = 0.25
-    if key == "Fire":
+    if key in ("Fire", "Flame"):
         b.inputs["Emission Color"].default_value = (*c, 1)
         b.inputs["Emission Strength"].default_value = 6.0
     if key == "Shade":
@@ -997,11 +1239,13 @@ def main():
         it = Item(name)
         if name == "Painting":
             painting(it, tex_path)
+        elif name == "Rug":
+            rug(it, os.path.join(out, "textures", "Rug_Pattern.png"))
         else:
             fn(it)
         items.append(it)
-    tex = bpy.data.images.get("Painting_Canvas")
-    mats = {k: make_material(k, tex if k == "Canvas" else None) for k in PALETTE}
+    texs = {"Canvas": bpy.data.images.get("Painting_Canvas"), "Rug": bpy.data.images.get("Rug_Pattern")}
+    mats = {k: make_material(k, texs.get(k)) for k in PALETTE}
     total = 0
     objs_by_item = {}
     for it in items:
@@ -1044,7 +1288,8 @@ def main():
 # ----------------------------------------------------------------------------- превью
 ROWS = [["Wardrobe", "Bookcase", "LuggageCart", "CoatRack", "Plant", "Suitcase", "Painting"],
         ["FloorLamp", "TableLamp", "Dresser", "Nightstand", "CoffeeTable", "Bench", "Door"],
-        ["Fireplace", "Clock", "Mirror", "LuggageRack", "Curtains", "WallPanel"]]
+        ["Fireplace", "Clock", "Mirror", "LuggageRack", "Curtains", "WallPanel"],
+        ["Chandelier", "Sconce", "RoundTable", "RectTable", "Rug", "GrandClock", "WallClock"]]
 
 
 def render(objs_by_item, out):
@@ -1087,7 +1332,11 @@ def render(objs_by_item, out):
             co = np.array([(o.matrix_world @ v.co)[:] for o in objs for v in o.data.vertices])
             lo, hi = co.min(0), co.max(0)
             dx = x - lo[0]
-            dz = 0.9 if name == "Painting" else 0.0
+            dz = {"Painting": 0.9, "Chandelier": 1.0, "Sconce": 1.0, "WallClock": 1.0}.get(name, 0.0)
+            if name == "Rug":                    # ковёр на превью приподнят к камере, чтобы был виден узор
+                for o in objs:
+                    o.rotation_euler.x = math.radians(62)
+                    o.location.z += 0.75
             for o in objs:
                 o.location.x += dx
                 o.location.z += dz

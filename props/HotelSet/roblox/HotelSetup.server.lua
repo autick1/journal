@@ -7,7 +7,7 @@
 	  * закрепляет детали (Anchored);
 	  * двери шкафа и комнаты открываются, ящики комода и тумбочки выдвигаются (подсказка E);
 	  * часы показывают текущее время, маятник качается;
-	  * в камине горит огонь, лампы светят, на банкетку можно сесть.
+	  * в камине горит огонь, лампы, бра и люстра светят, на банкетку можно сесть.
 	Предметы, добавленные в Workspace позже (копии), настраиваются автоматически.
 ]]
 
@@ -36,7 +36,10 @@ local PALETTE = {
 	Fire = { Enum.Material.Neon, Color3.fromRGB(255, 140, 40), 0.25, 0 },
 	Paper = { Enum.Material.SmoothPlastic, Color3.fromRGB(232, 220, 196), 0, 0 },
 	Black = { Enum.Material.SmoothPlastic, Color3.fromRGB(22, 18, 16), 0, 0 },
-	Canvas = { Enum.Material.SmoothPlastic, Color3.fromRGB(90, 90, 80), 0, 0 }
+	Canvas = { Enum.Material.SmoothPlastic, Color3.fromRGB(90, 90, 80), 0, 0 },
+	Rug = { Enum.Material.Fabric, Color3.fromRGB(110, 20, 28), 0, 0 },
+	Wax = { Enum.Material.SmoothPlastic, Color3.fromRGB(236, 228, 206), 0, 0 },
+	Flame = { Enum.Material.Neon, Color3.fromRGB(255, 190, 90), 0.1, 0 }
 }
 
 -- деталь -> ключ палитры
@@ -122,7 +125,34 @@ local PARTS = {
 	["Curtains_Right"] = "Fabric",
 	["WallPanel_Body"] = "Wood",
 	["WallPanel_Diamonds"] = "Fabric",
-	["WallPanel_DiamondsDark"] = "FabricDark"
+	["WallPanel_DiamondsDark"] = "FabricDark",
+	["Chandelier_Body"] = "Wood",
+	["Chandelier_Chain"] = "Iron",
+	["Chandelier_Arms"] = "Wood",
+	["Chandelier_Candles"] = "Wax",
+	["Chandelier_Flames"] = "Flame",
+	["Rug_Body"] = "Rug",
+	["Sconce_Body"] = "Wood",
+	["Sconce_Arms"] = "WoodDark",
+	["Sconce_Shades"] = "Shade",
+	["Sconce_Trim"] = "Brass",
+	["RoundTable_Body"] = "Wood",
+	["RectTable_Body"] = "Wood",
+	["GrandClock_Body"] = "Wood",
+	["GrandClock_Glass"] = "Glass",
+	["GrandClock_Brass"] = "Brass",
+	["GrandClock_Face"] = "Paper",
+	["GrandClock_Numerals"] = "Black",
+	["GrandClock_HourHand"] = "Black",
+	["GrandClock_MinuteHand"] = "Black",
+	["GrandClock_Pendulum"] = "Brass",
+	["GrandClock_Weights"] = "Brass",
+	["WallClock_Body"] = "Wood",
+	["WallClock_Face"] = "Paper",
+	["WallClock_Numerals"] = "Black",
+	["WallClock_Cap"] = "Brass",
+	["WallClock_HourHand"] = "Black",
+	["WallClock_MinuteHand"] = "Black"
 }
 
 -- деталь -> поведение
@@ -136,7 +166,13 @@ local BEHAVIORS = {
 	["Door_Leaf"] = "hinge",
 	["Clock_Pendulum"] = "pendulum",
 	["Clock_HourHand"] = "hour",
-	["Clock_MinuteHand"] = "minute"
+	["Clock_MinuteHand"] = "minute",
+	["Chandelier_Flames"] = "light",
+	["GrandClock_HourHand"] = "hour",
+	["GrandClock_MinuteHand"] = "minute",
+	["GrandClock_Pendulum"] = "pendulum",
+	["WallClock_HourHand"] = "hour",
+	["WallClock_MinuteHand"] = "minute"
 }
 
 local LABELS = {
@@ -232,15 +268,15 @@ local function makeMover(main, group, fn, label)
 	end)
 end
 
-local function setupClock(model)
-	local face = model:FindFirstChild("Clock_Face", true)
-	local body = model:FindFirstChild("Clock_Body", true)
+local function setupClock(model, item)
+	local face = model:FindFirstChild(item .. "_Face", true)
+	local body = model:FindFirstChild(item .. "_Body", true)
 	if not (face and body) then return end
 	local _, front, _, _, up = axes(body, face)
 	local c = face.Position
-	local hour = model:FindFirstChild("Clock_HourHand", true)
-	local minute = model:FindFirstChild("Clock_MinuteHand", true)
-	local pend = model:FindFirstChild("Clock_Pendulum", true)
+	local hour = model:FindFirstChild(item .. "_HourHand", true)
+	local minute = model:FindFirstChild(item .. "_MinuteHand", true)
+	local pend = model:FindFirstChild(item .. "_Pendulum", true)
 	local h0, m0, p0 = hour and hour.CFrame, minute and minute.CFrame, pend and pend.CFrame
 	local pivot = pend and (pend.Position + up * pend.Size.Y / 2)
 	local function rot(center, a)
@@ -257,7 +293,7 @@ local function setupClock(model)
 end
 
 local function decorate(p)
-	if p.Name:match("_Shade$") then
+	if p.Name:match("_Shades?$") or p.Name:match("_Flames$") then
 		local l = Instance.new("PointLight")
 		l.Color, l.Brightness, l.Range, l.Shadows = Color3.fromRGB(255, 190, 120), 1.6, 16, true
 		l.Parent = p
@@ -311,7 +347,9 @@ local function setupModel(model)
 			makeMover(main, group, fn, LABELS[itemOf(name)] or itemOf(name))
 		end
 	end
-	if model:FindFirstChild("Clock_Face", true) then setupClock(model) end
+	for name, kind in pairs(BEHAVIORS) do          -- часы: стрелки и маятник
+		if kind == "hour" and model:FindFirstChild(name, true) then setupClock(model, itemOf(name)) end
+	end
 end
 
 local function scan(root)
