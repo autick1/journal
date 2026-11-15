@@ -13,6 +13,7 @@
 
 local OPEN_ANGLE = 95        -- угол открывания дверей, градусы
 local TIME = 0.6             -- скорость анимации, секунды
+local TIME_ZONE = 3          -- часовой пояс для часов: Москва = 3. nil = время сервера (UTC)
 
 -- ключ = { материал, цвет, прозрачность, отражение }
 local PALETTE = {
@@ -281,8 +282,13 @@ end
 local function setupClock(model, item)
 	local face = model:FindFirstChild(item .. "_Face", true)
 	local body = model:FindFirstChild(item .. "_Body", true)
-	if not (face and body) then return end
-	local _, front, _, _, up = axes(body, face)
+	if not face then return end
+	local fs = face.Size                         -- ось циферблата = самая тонкая сторона, к стрелкам
+	local ax, mn = Vector3.xAxis, fs.X
+	if fs.Y < mn then ax, mn = Vector3.yAxis, fs.Y end
+	if fs.Z < mn then ax = Vector3.zAxis end
+	local front = face.CFrame:VectorToWorldSpace(ax)
+	local up = Vector3.yAxis
 	local c = face.Position
 	local hour = model:FindFirstChild(item .. "_HourHand", true)
 	local minute = model:FindFirstChild(item .. "_MinuteHand", true)
@@ -292,8 +298,10 @@ local function setupClock(model, item)
 	local function rot(center, a)
 		return CFrame.new(center) * CFrame.fromAxisAngle(front, a) * CFrame.new(-center)
 	end
+	local ref = hour or minute
+	if ref and (ref.Position - c):Dot(front) < 0 then front = -front end
 	RunService.Heartbeat:Connect(function()
-		local d = os.date("*t")
+		local d = TIME_ZONE and os.date("!*t", os.time() + TIME_ZONE * 3600) or os.date("*t")
 		local mins = d.min + d.sec / 60
 		local hrs = (d.hour % 12) + mins / 60
 		if hour then hour.CFrame = rot(c, -hrs / 12 * 2 * math.pi) * h0 end
