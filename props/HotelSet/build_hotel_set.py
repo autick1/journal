@@ -1165,6 +1165,122 @@ def facet_clock(it):
     it.behaviors.append((f"{it.name}_MinuteHand", "minute"))
 
 
+def rounded_rect(x0, x1, z0, z1, r, n=6, top_only=False):
+    """Скруглённый прямоугольник в XZ (обход против часовой)."""
+    pts = []
+    if top_only:
+        pts += [(x0, z0), (x1, z0)]
+    else:
+        pts += arc(x0 + r, z0 + r, r, r, PI, 1.5 * PI, n) + arc(x1 - r, z0 + r, r, r, 1.5 * PI, 2 * PI, n)
+    pts += arc(x1 - r, z1 - r, r, r, 0, 0.5 * PI, n) + arc(x0 + r, z1 - r, r, r, 0.5 * PI, PI, n)
+    return pts
+
+
+def rect_ring(xa, xb, za, zb, f, d1, d2):
+    """Цельная прямоугольная рамка (без стыков на углах) в плоскости XZ, толщина d1..d2 по Y."""
+    outer = [(xa, za), (xb, za), (xb, zb), (xa, zb)]
+    inner = [(xa + f, za + f), (xb - f, za + f), (xb - f, zb - f), (xa + f, zb - f)]
+    return bm_ring_prism(outer, inner, d1, d2)
+
+
+def raised_panel(it, part, mat, xr, zr, y, out=-1, frame=0.03):
+    """Филёнка: цельная рамка + выпуклая доска. out=-1 — лицом в -Y, +1 — в +Y."""
+    xa, xb = xr
+    za, zb = zr
+    d1, d2 = sorted((y, y + out * 0.012))
+    it.add(part, mat, rect_ring(xa, xb, za, zb, frame, d1, d2))
+    d1, d2 = sorted((y, y + out * 0.016))
+    it.bx(part, mat, (xa + frame + 0.006, xb - frame - 0.006), (d1, d2), (za + frame + 0.006, zb - frame - 0.006), 0.012, 2)
+
+
+def raised_panel_side(it, part, mat, yr, zr, x, out=1, frame=0.03):
+    """Филёнка на боковой стенке (плоскость YZ), лицом в +X (out=1) или -X (out=-1)."""
+    ya, yb = yr
+    za, zb = zr
+    d1, d2 = sorted((x, x + out * 0.012))
+    it.add(part, mat, rect_ring(-yb, -ya, za, zb, frame, d1, d2), rot=(0, 0, -PI / 2))
+    d1, d2 = sorted((x, x + out * 0.016))
+    it.bx(part, mat, (d1, d2), (ya + frame + 0.006, yb - frame - 0.006), (za + frame + 0.006, zb - frame - 0.006), 0.012, 2)
+
+
+def reception_desk(it):
+    B = "Body"
+    W, yF, yB = 0.9, -0.36, 0.36              # полуширина, рабочая сторона (-Y), сторона гостя (+Y)
+    ped = [(-W, -0.48), (0.48, W)]
+    # --- тумбы
+    for xa, xb in ped:
+        it.bx(B, "Wood", (xa - 0.02, xb + 0.02), (yF - 0.025, yB - 0.02), (0.0, 0.09), 0.008)      # цоколь
+        it.bx(B, "Wood", (xa - 0.01, xb + 0.01), (yF - 0.032, yB - 0.02), (0.08, 0.1), 0.005)
+        it.bx(B, "Wood", (xa, xa + 0.025), (yF, yB - 0.02), (0.1, 0.72))
+        it.bx(B, "Wood", (xb - 0.025, xb), (yF, yB - 0.02), (0.1, 0.72))
+        it.bx(B, "Wood", (xa, xb), (yF, yB - 0.02), (0.1, 0.12))
+        for z in (0.1, 0.4, 0.69):                                                     # рельсы между ящиками
+            it.bx(B, "Wood", (xa + 0.02, xb - 0.02), (yF - 0.008, yF + 0.02), (z, z + 0.03), 0.003)
+        for x0, x1 in ((xa - 0.006, xa + 0.035), (xb - 0.035, xb + 0.006)):            # стойки рамы
+            it.bx(B, "Wood", (x0, x1), (yF - 0.012, yF + 0.02), (0.1, 0.72), 0.004)
+        outer = xa if xa < 0 else xb                                                  # филёнка на боку тумбы
+        s = -1 if xa < 0 else 1
+        for y0, y1 in ((yF + 0.06, -0.02), (0.02, yB - 0.06)):
+            raised_panel_side(it, B, "Wood", (y0, y1), (0.16, 0.66), outer, s)
+    # --- задняя стенка проёма для ног
+    it.bx(B, "Wood", (-0.48, 0.48), (0.18, 0.2), (0.1, 0.6))
+    # --- столешница с профилем и кожаной вставкой
+    it.bx(B, "Wood", (-W - 0.035, W + 0.035), (yF - 0.05, 0.2), (0.72, 0.745), 0.008, 2)
+    it.bx(B, "Wood", (-W - 0.045, W + 0.045), (yF - 0.06, 0.2), (0.745, 0.765), 0.01, 2)
+    it.bx("Inset", "Leather", (-0.6, 0.6), (yF + 0.02, 0.14), (0.765, 0.768), 0.002)
+    it.tube("InsetTrim", "Brass", [(-0.61, yF + 0.01, 0.767), (0.61, yF + 0.01, 0.767), (0.61, 0.15, 0.767),
+                                   (-0.61, 0.15, 0.767), (-0.61, yF + 0.01, 0.767)], 0.003, segs=4, caps=False)
+    # --- стойка (поднятая стенка) со скруглёнными верхними углами
+    hutch = rounded_rect(-W, W, 0.765, 1.08, 0.12, top_only=True)
+    it.prism(B, "Wood", hutch, 0.2, yB - 0.02)
+    it.tube(B, "Wood", [(x, 0.195, z) for x, z in hutch[2:]], 0.012, segs=6)                 # кант по рабочей стороне
+    raised_panel(it, B, "Wood", (-0.75, -0.06), (0.8, 1.0), 0.2, -1)
+    raised_panel(it, B, "Wood", (0.06, 0.75), (0.8, 1.0), 0.2, -1)
+    it.bx(B, "Wood", (-0.82, 0.82), (0.13, 0.2), (0.86, 0.875), 0.004)                         # полочка для бумаг
+    # --- стойка гостя: широкий подоконник со скруглёнными концами
+    plan = rounded_rect(-W - 0.06, W + 0.06, 0.16, yB + 0.12, 0.1)
+    it.add(B, "Wood", bm_prism(plan, -1.125, -1.08), rot=(-PI / 2, 0, 0))
+    it.add(B, "Wood", bm_prism(rounded_rect(-W - 0.04, W + 0.04, 0.17, yB + 0.1, 0.09), -1.08, -1.055), rot=(-PI / 2, 0, 0))
+    # --- сторона гостя (+Y): плинтус, пилястры, три филёнки в два яруса, карниз
+    it.bx(B, "Wood", (-W - 0.03, W + 0.03), (yB, yB + 0.045), (0, 0.1), 0.008)
+    it.bx(B, "Wood", (-W, W), (yB - 0.02, yB), (0.1, 1.06))
+    xs = [-W, -0.3, 0.3, W]
+    for x in xs:
+        it.bx(B, "Wood", (x - 0.04, x + 0.04), (yB, yB + 0.03), (0.1, 1.04), 0.006)
+        it.bx(B, "Wood", (x - 0.05, x + 0.05), (yB, yB + 0.04), (0.1, 0.15), 0.006)
+        it.bx(B, "Wood", (x - 0.05, x + 0.05), (yB, yB + 0.04), (0.98, 1.02), 0.006)
+    for a, b in zip(xs, xs[1:]):
+        raised_panel(it, B, "Wood", (a + 0.07, b - 0.07), (0.16, 0.55), yB, 1)
+        raised_panel(it, B, "Wood", (a + 0.07, b - 0.07), (0.62, 0.97), yB, 1)
+    it.bx(B, "Wood", (-W - 0.02, W + 0.02), (yB, yB + 0.05), (1.02, 1.055), 0.008)
+    # --- ящики (выдвигаются): по 2 в тумбах + центральный
+    drawers = []
+    for side, (xa, xb) in zip(("L", "R"), ped):
+        drawers += [(f"Drawer{side}1", xa + 0.035, xb - 0.035, 0.43, 0.69), (f"Drawer{side}2", xa + 0.035, xb - 0.035, 0.13, 0.4)]
+    drawers.append(("DrawerC", -0.46, 0.46, 0.6, 0.715))
+    for name, xa, xb, z0, z1 in drawers:
+        z0, z1 = z0 + 0.004, z1 - 0.004
+        it.bx(name, "Wood", (xa, xb), (yF - 0.024, yF), (z0, z1), 0.005)
+        fr = 0.025 if z1 - z0 < 0.15 else 0.04
+        it.bx(name, "Wood", (xa + fr, xb - fr), (yF - 0.032, yF - 0.024), (z0 + fr * 0.8, z1 - fr * 0.8), 0.008, 2)
+        dd = 0.24 if name != "DrawerC" else 0.3
+        it.bx(name, "Wood", (xa + 0.01, xb - 0.01), (yF, yF + dd), (z0 + 0.01, z0 + 0.02))
+        it.bx(name, "Wood", (xa + 0.01, xa + 0.02), (yF, yF + dd), (z0 + 0.01, z1 - 0.02))
+        it.bx(name, "Wood", (xb - 0.02, xb - 0.01), (yF, yF + dd), (z0 + 0.01, z1 - 0.02))
+        it.bx(name, "Wood", (xa + 0.01, xb - 0.01), (yF + dd - 0.01, yF + dd), (z0 + 0.01, z1 - 0.02))
+        w = xb - xa
+        kx = [(xa + xb) / 2 - w * 0.28, (xa + xb) / 2 + w * 0.28] if name != "DrawerC" else [-0.3, 0.3]
+        for x in kx:
+            knob(it, f"{name}_Knobs", "Brass", (x, yF - 0.032, (z0 + z1) / 2), 0.016, 0.035)
+        it.cyl(f"{name}_Knobs", "Brass", 0.006, 0.006, ((xa + xb) / 2, yF - 0.034, z1 - 0.03 if name != "DrawerC" else (z0 + z1) / 2),
+               (PI / 2, 0, 0), segs=8)                                                     # замочная скважина
+        it.behaviors.append((f"{it.name}_{name}", "slide"))
+    # --- звонок портье на стойке
+    it.lathe("Bell", "Brass", [(0, 1.125), (0.045, 1.125), (0.045, 1.135), (0.042, 1.14), (0.04, 1.15), (0.036, 1.17),
+                               (0.026, 1.19), (0.012, 1.198), (0.006, 1.2), (0.006, 1.21), (0.01, 1.214), (0, 1.218)],
+             (0.62, yB - 0.02, 0), segs=20)
+
+
 ITEMS = [
     ("Wardrobe", wardrobe), ("Bookcase", bookcase), ("LuggageCart", luggage_cart), ("CoatRack", coat_rack),
     ("Plant", plant), ("Suitcase", lambda it: suitcase(it, "", (0.8, 0.42, 0.5), (0, 0, 0))),
@@ -1174,7 +1290,7 @@ ITEMS = [
     ("Curtains", curtains), ("WallPanel", wall_panel),
     ("Chandelier", chandelier), ("Rug", None), ("Sconce", sconce), ("RoundTable", round_table),
     ("RectTable", rect_table), ("GrandClock", grand_clock), ("WallClock", wall_clock),
-    ("FacetClock", facet_clock),
+    ("FacetClock", facet_clock), ("ReceptionDesk", reception_desk),
 ]
 RU = {"Wardrobe": "Шкаф", "Bookcase": "Книжный шкаф", "LuggageCart": "Тележка", "CoatRack": "Вешалка",
       "Plant": "Растение", "Suitcase": "Чемодан", "Painting": "Картина", "FloorLamp": "Торшер",
@@ -1183,7 +1299,8 @@ RU = {"Wardrobe": "Шкаф", "Bookcase": "Книжный шкаф", "LuggageCar
       "LuggageRack": "Стеллаж для багажа", "Curtains": "Шторы", "WallPanel": "Панель на стену",
       "Chandelier": "Люстра", "Rug": "Ковёр", "Sconce": "Бра", "RoundTable": "Круглый стол",
       "RectTable": "Столик", "GrandClock": "Резные часы", "WallClock": "Настенные часы",
-      "FacetClock": "Часы (12 граней)"}
+      "FacetClock": "Часы (12 граней)",
+      "ReceptionDesk": "Стол-стойка"}
 
 
 # ----------------------------------------------------------------------------- сборка в Blender
@@ -1224,7 +1341,6 @@ def build_object(part, mats, col):
     me.validate()
     bm = bmesh.new()
     bm.from_mesh(me)
-    bmesh.ops.remove_doubles(bm, verts=bm.verts[:], dist=1e-6)
     bmesh.ops.triangulate(bm, faces=[f for f in bm.faces if len(f.verts) > 4], quad_method='BEAUTY', ngon_method='BEAUTY')
     bm.to_mesh(me)
     bm.free()
@@ -1320,7 +1436,8 @@ def main():
 ROWS = [["Wardrobe", "Bookcase", "LuggageCart", "CoatRack", "Plant", "Suitcase", "Painting"],
         ["FloorLamp", "TableLamp", "Dresser", "Nightstand", "CoffeeTable", "Bench", "Door"],
         ["Fireplace", "Clock", "Mirror", "LuggageRack", "Curtains", "WallPanel"],
-        ["Chandelier", "Sconce", "RoundTable", "RectTable", "Rug", "GrandClock", "WallClock", "FacetClock"]]
+        ["Chandelier", "Sconce", "RoundTable", "RectTable", "Rug", "GrandClock", "WallClock", "FacetClock"],
+        ["ReceptionDesk"]]
 
 
 def render(objs_by_item, out):

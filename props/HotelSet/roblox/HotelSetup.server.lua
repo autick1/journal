@@ -161,7 +161,21 @@ local PARTS = {
 	["FacetClock_Ticks"] = "Ink",
 	["FacetClock_HourHand"] = "Ink",
 	["FacetClock_MinuteHand"] = "Ink",
-	["FacetClock_Cap"] = "Ink"
+	["FacetClock_Cap"] = "Ink",
+	["ReceptionDesk_Body"] = "Wood",
+	["ReceptionDesk_Inset"] = "Leather",
+	["ReceptionDesk_InsetTrim"] = "Brass",
+	["ReceptionDesk_DrawerL1"] = "Wood",
+	["ReceptionDesk_DrawerL1_Knobs"] = "Brass",
+	["ReceptionDesk_DrawerL2"] = "Wood",
+	["ReceptionDesk_DrawerL2_Knobs"] = "Brass",
+	["ReceptionDesk_DrawerR1"] = "Wood",
+	["ReceptionDesk_DrawerR1_Knobs"] = "Brass",
+	["ReceptionDesk_DrawerR2"] = "Wood",
+	["ReceptionDesk_DrawerR2_Knobs"] = "Brass",
+	["ReceptionDesk_DrawerC"] = "Wood",
+	["ReceptionDesk_DrawerC_Knobs"] = "Brass",
+	["ReceptionDesk_Bell"] = "Brass"
 }
 
 -- деталь -> поведение
@@ -183,11 +197,16 @@ local BEHAVIORS = {
 	["WallClock_HourHand"] = "hour",
 	["WallClock_MinuteHand"] = "minute",
 	["FacetClock_HourHand"] = "hour",
-	["FacetClock_MinuteHand"] = "minute"
+	["FacetClock_MinuteHand"] = "minute",
+	["ReceptionDesk_DrawerL1"] = "slide",
+	["ReceptionDesk_DrawerL2"] = "slide",
+	["ReceptionDesk_DrawerR1"] = "slide",
+	["ReceptionDesk_DrawerR2"] = "slide",
+	["ReceptionDesk_DrawerC"] = "slide"
 }
 
 local LABELS = {
-	Wardrobe = "Шкаф", Dresser = "Комод", Nightstand = "Тумбочка", Door = "Дверь",
+	Wardrobe = "Шкаф", Dresser = "Комод", Nightstand = "Тумбочка", Door = "Дверь", ReceptionDesk = "Стол",
 }
 
 local TweenService = game:GetService("TweenService")
