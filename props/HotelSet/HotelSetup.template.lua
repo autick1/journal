@@ -7,12 +7,14 @@
 	  * закрепляет детали (Anchored);
 	  * двери шкафа и комнаты открываются, ящики комода и тумбочки выдвигаются (подсказка E);
 	  * часы показывают текущее время, маятник качается;
+	  * звонок портье: нажатие (E или клик) — кнопка уходит вниз и пружинит, купол дрожит, звучит BELL_SOUND;
 	  * в камине горит огонь, лампы, бра и люстра светят, на банкетку можно сесть.
 	Предметы, добавленные в Workspace позже (копии), настраиваются автоматически.
 ]]
 
 local OPEN_ANGLE = 95        -- угол открывания дверей, градусы
 local TIME = 0.6             -- скорость анимации, секунды
+local BELL_SOUND = ""        -- звук звонка: "rbxassetid://ID" из Toolbox (Audio). Пусто — без звука
 local TIME_ZONE = 3          -- часовой пояс для часов: Москва = 3. nil = время сервера (UTC)
 
 -- ключ = { материал, цвет, прозрачность, отражение }
@@ -154,6 +156,54 @@ local function setupClock(model, item)
 	end)
 end
 
+local function setupPress(model, button)
+	local prefix = button.Name:gsub("Button$", "")          -- ReceptionDesk_Bell / DeskBell_
+	local dome = model:FindFirstChild(prefix .. "Dome", true)
+	local up = Vector3.yAxis
+	local b0 = button.CFrame
+	local d0 = dome and dome.CFrame
+	local depth = button.Size.Y * 0.45                       -- ход кнопки
+	button.CanCollide = false
+	local sound
+	if BELL_SOUND ~= "" then
+		sound = Instance.new("Sound")
+		sound.SoundId, sound.Volume, sound.RollOffMaxDistance = BELL_SOUND, 0.8, 60
+		sound.Parent = dome or button
+	end
+	local busy = false
+	local function ring()
+		if busy then return end
+		busy = true
+		local down = TweenService:Create(button, TweenInfo.new(0.06, Enum.EasingStyle.Quad, Enum.EasingDirection.In),
+			{ CFrame = b0 - up * depth })
+		down:Play()
+		down.Completed:Wait()
+		if sound then sound:Play() end
+		local back = TweenService:Create(button, TweenInfo.new(0.18, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
+			{ CFrame = b0 })
+		back:Play()
+		if dome then                                         -- купол «звенит» — затухающая дрожь
+			for i = 1, 8 do
+				local a = math.rad(1.5) * (1 - i / 9) * ((i % 2 == 0) and 1 or -1)
+				dome.CFrame = d0 * CFrame.Angles(a, 0, a * 0.6)
+				task.wait(0.025)
+			end
+			dome.CFrame = d0
+		end
+		back.Completed:Wait()
+		busy = false
+	end
+	local prompt = Instance.new("ProximityPrompt")
+	prompt.ActionText, prompt.ObjectText = "Позвонить", "Звонок"
+	prompt.MaxActivationDistance, prompt.RequiresLineOfSight = 8, false
+	prompt.Parent = dome or button
+	prompt.Triggered:Connect(ring)
+	local click = Instance.new("ClickDetector")
+	click.MaxActivationDistance = 12
+	click.Parent = dome or button
+	click.MouseClick:Connect(ring)
+end
+
 local function decorate(p)
 	if p.Name:match("_Shades?$") or p.Name:match("_Flames$") then
 		local l = Instance.new("PointLight")
@@ -211,6 +261,10 @@ local function setupModel(model)
 	end
 	for name, kind in pairs(BEHAVIORS) do          -- часы: стрелки и маятник
 		if kind == "hour" and model:FindFirstChild(name, true) then setupClock(model, itemOf(name)) end
+		if kind == "press" then
+			local b = model:FindFirstChild(name, true)
+			if b then setupPress(model, b) end
+		end
 	end
 end
 

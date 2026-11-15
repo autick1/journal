@@ -1275,10 +1275,25 @@ def reception_desk(it):
         it.cyl(f"{name}_Knobs", "Brass", 0.006, 0.006, ((xa + xb) / 2, yF - 0.034, z1 - 0.03 if name != "DrawerC" else (z0 + z1) / 2),
                (PI / 2, 0, 0), segs=8)                                                     # замочная скважина
         it.behaviors.append((f"{it.name}_{name}", "slide"))
-    # --- звонок портье на стойке
-    it.lathe("Bell", "Brass", [(0, 1.125), (0.045, 1.125), (0.045, 1.135), (0.042, 1.14), (0.04, 1.15), (0.036, 1.17),
-                               (0.026, 1.19), (0.012, 1.198), (0.006, 1.2), (0.006, 1.21), (0.01, 1.214), (0, 1.218)],
-             (0.62, yB - 0.02, 0), segs=20)
+    # --- звонок портье на стойке (3 детали: подставка, купол, кнопка — для анимации нажатия)
+    desk_bell(it, "Bell", (0.62, yB - 0.02, 1.125))
+
+
+def desk_bell(it, pre, loc):
+    """Звонок портье: Base (деревянная подставка), Dome (латунный купол), Button (шток + кнопка — нажимается)."""
+    x, y, z = loc
+    it.lathe(f"{pre}Base", "WoodDark", [(0, 0), (0.056, 0), (0.06, 0.004), (0.06, 0.011), (0.055, 0.016), (0.05, 0.018),
+                                       (0, 0.018)], (x, y, z), segs=32)
+    it.lathe(f"{pre}Dome", "Brass", [(0, 0.018), (0.047, 0.018), (0.048, 0.021), (0.046, 0.03), (0.041, 0.042),
+                                     (0.033, 0.052), (0.022, 0.059), (0.01, 0.062), (0.005, 0.0625), (0, 0.0625)],
+             (x, y, z), segs=32)
+    it.lathe(f"{pre}Button", "Brass", [(0, 0.056), (0.0028, 0.056), (0.0028, 0.071), (0.006, 0.072), (0.0105, 0.074),
+                                       (0.011, 0.077), (0.008, 0.08), (0, 0.081)], (x, y, z), segs=16)
+    it.behaviors.append((f"{it.name}_{pre}Button", "press"))
+
+
+def desk_bell_item(it):
+    desk_bell(it, "", (0, 0, 0))
 
 
 ITEMS = [
@@ -1290,7 +1305,7 @@ ITEMS = [
     ("Curtains", curtains), ("WallPanel", wall_panel),
     ("Chandelier", chandelier), ("Rug", None), ("Sconce", sconce), ("RoundTable", round_table),
     ("RectTable", rect_table), ("GrandClock", grand_clock), ("WallClock", wall_clock),
-    ("FacetClock", facet_clock), ("ReceptionDesk", reception_desk),
+    ("FacetClock", facet_clock), ("ReceptionDesk", reception_desk), ("DeskBell", desk_bell_item),
 ]
 RU = {"Wardrobe": "Шкаф", "Bookcase": "Книжный шкаф", "LuggageCart": "Тележка", "CoatRack": "Вешалка",
       "Plant": "Растение", "Suitcase": "Чемодан", "Painting": "Картина", "FloorLamp": "Торшер",
@@ -1300,7 +1315,7 @@ RU = {"Wardrobe": "Шкаф", "Bookcase": "Книжный шкаф", "LuggageCar
       "Chandelier": "Люстра", "Rug": "Ковёр", "Sconce": "Бра", "RoundTable": "Круглый стол",
       "RectTable": "Столик", "GrandClock": "Резные часы", "WallClock": "Настенные часы",
       "FacetClock": "Часы (12 граней)",
-      "ReceptionDesk": "Стол-стойка"}
+      "ReceptionDesk": "Стол-стойка", "DeskBell": "Звонок портье"}
 
 
 # ----------------------------------------------------------------------------- сборка в Blender
@@ -1437,7 +1452,7 @@ ROWS = [["Wardrobe", "Bookcase", "LuggageCart", "CoatRack", "Plant", "Suitcase",
         ["FloorLamp", "TableLamp", "Dresser", "Nightstand", "CoffeeTable", "Bench", "Door"],
         ["Fireplace", "Clock", "Mirror", "LuggageRack", "Curtains", "WallPanel"],
         ["Chandelier", "Sconce", "RoundTable", "RectTable", "Rug", "GrandClock", "WallClock", "FacetClock"],
-        ["ReceptionDesk"]]
+        ["ReceptionDesk", "DeskBell"]]
 
 
 def render(objs_by_item, out):
