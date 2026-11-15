@@ -55,6 +55,7 @@ PALETTE = {
     "Rug":        ((110, 20, 28), "Fabric", 0, 0, 0.95),
     "Wax":        ((236, 228, 206), "SmoothPlastic", 0, 0, 0.5),
     "Flame":      ((255, 190, 90), "Neon", 0.1, 0, 0.5),
+    "Ink":        ((72, 30, 20), "SmoothPlastic", 0, 0, 0.5),
 }
 
 
@@ -1136,6 +1137,34 @@ def wall_clock(it):
     clock_hands(it, (0, cz), -0.028, 0.1, 0.15, 1.2)
 
 
+def facet_clock(it):
+    """Настенные часы: 12-гранный деревянный обод, светлый циферблат, риски и стрелки."""
+    cz = 0.27
+    ph = PI / 12                                                # грань сверху, как на референсе
+    rot = (PI / 2, 0, 0)                                        # ось лейзера Z -> -Y (лицом вперёд)
+    it.lathe("Body", "Wood", [(0.205, 0.0), (0.26, 0.0), (0.262, 0.028), (0.245, 0.05), (0.215, 0.055),
+                              (0.2, 0.045)], (0, 0, cz), rot, segs=12, closed=True, phase=ph)
+    it.lathe("Body", "Wood", [(0, 0.0), (0.21, 0.0), (0.21, 0.01), (0, 0.01)], (0, 0, cz), rot, segs=12, phase=ph)
+    it.lathe("Rim", "WoodDark", [(0.188, 0.008), (0.207, 0.008), (0.207, 0.046), (0.188, 0.034)], (0, 0, cz), rot,
+             segs=12, closed=True, phase=ph)
+    it.lathe("Face", "Paper", [(0, 0.008), (0.19, 0.008), (0.19, 0.022), (0, 0.022)], (0, 0, cz), rot, segs=12, phase=ph)
+    yf = -0.022
+    for k in range(12):
+        a = k * PI / 6
+        L, W = (0.05, 0.022) if k == 0 else (0.042, 0.018)
+        r = 0.15 if k else 0.148
+        it.box_at("Ticks", "Ink", (W, 0.004, L), (r * math.sin(a), yf - 0.002, cz + r * math.cos(a)), (0, a, 0), bev=0)
+    y = yf - 0.005
+    it.prism("HourHand", "Ink", [(-0.011, cz - 0.02), (0.011, cz - 0.02), (0.007, cz + 0.07), (0.0, cz + 0.095),
+                                 (-0.007, cz + 0.07)], y - 0.004, y)
+    y -= 0.005
+    it.prism("MinuteHand", "Ink", [(-0.008, cz - 0.025), (0.008, cz - 0.025), (0.005, cz + 0.12), (0.0, cz + 0.15),
+                                   (-0.005, cz + 0.12)], y - 0.004, y)
+    it.cyl("Cap", "Ink", 0.02, 0.012, (0, y - 0.006, cz), rot, segs=16)
+    it.behaviors.append((f"{it.name}_HourHand", "hour"))
+    it.behaviors.append((f"{it.name}_MinuteHand", "minute"))
+
+
 ITEMS = [
     ("Wardrobe", wardrobe), ("Bookcase", bookcase), ("LuggageCart", luggage_cart), ("CoatRack", coat_rack),
     ("Plant", plant), ("Suitcase", lambda it: suitcase(it, "", (0.8, 0.42, 0.5), (0, 0, 0))),
@@ -1145,6 +1174,7 @@ ITEMS = [
     ("Curtains", curtains), ("WallPanel", wall_panel),
     ("Chandelier", chandelier), ("Rug", None), ("Sconce", sconce), ("RoundTable", round_table),
     ("RectTable", rect_table), ("GrandClock", grand_clock), ("WallClock", wall_clock),
+    ("FacetClock", facet_clock),
 ]
 RU = {"Wardrobe": "Шкаф", "Bookcase": "Книжный шкаф", "LuggageCart": "Тележка", "CoatRack": "Вешалка",
       "Plant": "Растение", "Suitcase": "Чемодан", "Painting": "Картина", "FloorLamp": "Торшер",
@@ -1152,7 +1182,8 @@ RU = {"Wardrobe": "Шкаф", "Bookcase": "Книжный шкаф", "LuggageCar
       "Bench": "Банкетка", "Door": "Дверь", "Fireplace": "Камин", "Clock": "Напольные часы", "Mirror": "Зеркало",
       "LuggageRack": "Стеллаж для багажа", "Curtains": "Шторы", "WallPanel": "Панель на стену",
       "Chandelier": "Люстра", "Rug": "Ковёр", "Sconce": "Бра", "RoundTable": "Круглый стол",
-      "RectTable": "Столик", "GrandClock": "Резные часы", "WallClock": "Настенные часы"}
+      "RectTable": "Столик", "GrandClock": "Резные часы", "WallClock": "Настенные часы",
+      "FacetClock": "Часы (12 граней)"}
 
 
 # ----------------------------------------------------------------------------- сборка в Blender
@@ -1289,7 +1320,7 @@ def main():
 ROWS = [["Wardrobe", "Bookcase", "LuggageCart", "CoatRack", "Plant", "Suitcase", "Painting"],
         ["FloorLamp", "TableLamp", "Dresser", "Nightstand", "CoffeeTable", "Bench", "Door"],
         ["Fireplace", "Clock", "Mirror", "LuggageRack", "Curtains", "WallPanel"],
-        ["Chandelier", "Sconce", "RoundTable", "RectTable", "Rug", "GrandClock", "WallClock"]]
+        ["Chandelier", "Sconce", "RoundTable", "RectTable", "Rug", "GrandClock", "WallClock", "FacetClock"]]
 
 
 def render(objs_by_item, out):
@@ -1332,7 +1363,7 @@ def render(objs_by_item, out):
             co = np.array([(o.matrix_world @ v.co)[:] for o in objs for v in o.data.vertices])
             lo, hi = co.min(0), co.max(0)
             dx = x - lo[0]
-            dz = {"Painting": 0.9, "Chandelier": 1.0, "Sconce": 1.0, "WallClock": 1.0}.get(name, 0.0)
+            dz = {"Painting": 0.9, "Chandelier": 1.0, "Sconce": 1.0, "WallClock": 1.0, "FacetClock": 1.0}.get(name, 0.0)
             if name == "Rug":                    # ковёр на превью приподнят к камере, чтобы был виден узор
                 for o in objs:
                     o.rotation_euler.x = math.radians(62)

@@ -39,7 +39,8 @@ local PALETTE = {
 	Canvas = { Enum.Material.SmoothPlastic, Color3.fromRGB(90, 90, 80), 0, 0 },
 	Rug = { Enum.Material.Fabric, Color3.fromRGB(110, 20, 28), 0, 0 },
 	Wax = { Enum.Material.SmoothPlastic, Color3.fromRGB(236, 228, 206), 0, 0 },
-	Flame = { Enum.Material.Neon, Color3.fromRGB(255, 190, 90), 0.1, 0 }
+	Flame = { Enum.Material.Neon, Color3.fromRGB(255, 190, 90), 0.1, 0 },
+	Ink = { Enum.Material.SmoothPlastic, Color3.fromRGB(72, 30, 20), 0, 0 }
 }
 
 -- деталь -> ключ палитры
@@ -152,7 +153,14 @@ local PARTS = {
 	["WallClock_Numerals"] = "Black",
 	["WallClock_Cap"] = "Brass",
 	["WallClock_HourHand"] = "Black",
-	["WallClock_MinuteHand"] = "Black"
+	["WallClock_MinuteHand"] = "Black",
+	["FacetClock_Body"] = "Wood",
+	["FacetClock_Rim"] = "WoodDark",
+	["FacetClock_Face"] = "Paper",
+	["FacetClock_Ticks"] = "Ink",
+	["FacetClock_HourHand"] = "Ink",
+	["FacetClock_MinuteHand"] = "Ink",
+	["FacetClock_Cap"] = "Ink"
 }
 
 -- деталь -> поведение
@@ -172,7 +180,9 @@ local BEHAVIORS = {
 	["GrandClock_MinuteHand"] = "minute",
 	["GrandClock_Pendulum"] = "pendulum",
 	["WallClock_HourHand"] = "hour",
-	["WallClock_MinuteHand"] = "minute"
+	["WallClock_MinuteHand"] = "minute",
+	["FacetClock_HourHand"] = "hour",
+	["FacetClock_MinuteHand"] = "minute"
 }
 
 local LABELS = {
