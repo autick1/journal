@@ -1015,24 +1015,98 @@ def bm_pleated(rb, rt, z0, z1, n=28, amp=0.06, wall=0.004):
     return vf_bm(verts, faces)
 
 
+def catmull(pts, n=10):
+    """Гладкая кривая Катмулла-Рома через точки (для изогнутых рожков и завитков)."""
+    P = [Vector(p) for p in pts]
+    P = [P[0] * 2 - P[1]] + P + [P[-1] * 2 - P[-2]]
+    out = []
+    for i in range(1, len(P) - 2):
+        p0, p1, p2, p3 = P[i - 1], P[i], P[i + 1], P[i + 2]
+        for k in range(n):
+            t = k / n
+            out.append(tuple(0.5 * ((2 * p1) + (-p0 + p2) * t + (2 * p0 - 5 * p1 + 4 * p2 - p3) * t * t +
+                                    (-p0 + 3 * p1 - 3 * p2 + p3) * t ** 3)))
+    out.append(tuple(P[-2]))
+    return out
+
+
 def sconce(it):
-    plate = [(0.06 * math.sin(t) * (1.2 - 0.5 * math.cos(t) ** 2), 0.17 - 0.16 * math.cos(t)) for t in np.linspace(0, 2 * PI, 33)[:-1]]
-    plate = [(x * 1.4, z) for x, z in plate]
-    it.prism("Body", "Wood", plate, -0.02, 0.0)
-    it.prism("Body", "Wood", [(x * 0.7, 0.17 + (z - 0.17) * 0.75) for x, z in plate], -0.032, -0.02)
-    it.lathe("Body", "Wood", [(0, 0), (0.02, 0), (0.03, 0.025), (0.035, 0.05), (0, 0.06)], (0, -0.04, 0.12), (PI / 2, 0, 0), segs=14)
-    it.lathe("Body", "Wood", [(0, 0.0), (0.012, 0.005), (0.02, 0.025), (0.008, 0.05), (0, 0.06)], (0, -0.012, -0.05), segs=10)
+    """Бра: резная картушная пластина, розетка, завитки, корона из листьев, точёная подвеска,
+    два S-образных рожка с кольцами, чашечками и свечными трубками, плиссированные абажуры."""
+    B, A = "Body", "Arms"
+    cz = 0.2                                            # центр пластины по высоте
+
+    def cartouche(k, n=64):                             # фигурный контур, k — масштаб (ступени профиля)
+        pts = []
+        for i in range(n):
+            t = 2 * PI * i / n
+            x = 0.085 * math.sin(t) * (1 + 0.26 * math.cos(2 * t) + 0.1 * math.cos(4 * t) - 0.12 * math.cos(t))
+            z = -0.19 * math.cos(t) - 0.03 * math.cos(3 * t)
+            pts.append((x * k, cz + z * k))
+        return pts
+    # ступенчатый профиль пластины: основание -> скос -> поле
+    for k, y0, y1 in ((1.0, -0.012, 0.0), (0.955, -0.02, -0.012), (0.9, -0.026, -0.02)):
+        it.prism(B, "Wood", cartouche(k), y0, y1)
+    it.add(B, "Wood", bm_ring_prism(cartouche(0.86), cartouche(0.8), -0.034, -0.026))     # выпуклый кант
+    it.prism(B, "Wood", cartouche(0.8), -0.03, -0.026)                                  # утопленное поле
+    it.add(B, "Wood", bm_ring_prism(cartouche(0.66), cartouche(0.63), -0.034, -0.03))   # внутренний кант
+    for sx in (-1, 1):                                  # боковые волюты на уровне «талии»
+        vx, vz = sx * 0.072, cz - 0.01
+        vol = [(vx + sx * 0.022 * (1 - t / 8) * math.cos(t), -0.02, vz + 0.022 * (1 - t / 8) * math.sin(t))
+               for t in np.linspace(0, 2.4 * PI, 36)]
+        it.tube(B, "Wood", vol, 0.0065, segs=8, r_end=0.003)
+    # розетка в центре поля
+    rz = cz + 0.085
+    it.lathe(B, "Wood", [(0, 0), (0.026, 0), (0.028, 0.004), (0.022, 0.009), (0, 0.012)], (0, -0.03, rz), (PI / 2, 0, 0), segs=20)
+    for k in range(10):
+        a = k * PI / 5
+        it.add(B, "Wood", bm_sphere(0.011, 10, 6), (0.024 * math.sin(a), -0.04, rz + 0.024 * math.cos(a)),
+               (0, a, 0), (0.6, 0.5, 1.2))
+    it.add(B, "Wood", bm_sphere(0.012, 12, 8), (0, -0.045, rz), scale=(1, 0.7, 1))
+    # C-завитки по бокам розетки
     for sx in (-1, 1):
-        pts = [(sx * x, y, z) for x, y, z in [(0.0, -0.06, 0.12), (0.06, -0.09, 0.1), (0.12, -0.12, 0.11),
-                                             (0.16, -0.14, 0.15), (0.17, -0.15, 0.2)]]
-        it.tube("Arms", "WoodDark", pts, 0.012)
-        x = sx * 0.17
-        it.lathe("Arms", "WoodDark", [(0, 0.2), (0.04, 0.2), (0.045, 0.21), (0.02, 0.215), (0.018, 0.25), (0, 0.25)],
-                 (x, -0.15, 0), segs=14)
-        it.cyl("Arms", "WoodDark", 0.004, 0.05, (x, -0.15, 0.27), segs=6)
-        it.add("Shades", "Shade", bm_pleated(0.1, 0.065, 0.24, 0.42), (x, -0.15, 0))
-        for zz, rr in ((0.24, 0.102), (0.42, 0.067)):
-            it.add("Trim", "Brass", bm_torus(rr, 0.004, 28, 5), (x, -0.15, zz))
+        sp = [(sx * (0.04 + 0.02 * math.cos(t)), -0.034, rz - 0.035 + 0.06 * (t / (2.6 * PI)) + 0.02 * math.sin(t))
+              for t in np.linspace(0.3, 2.6 * PI, 40)]
+        it.tube(B, "Wood", sp, 0.0055, segs=6, r_end=0.003)
+    # корона из листьев сверху
+    top = cz + 0.205
+    for k, a in enumerate(np.linspace(-0.9, 0.9, 7)):
+        L = 0.05 - 0.012 * abs(a)
+        it.add(B, "Wood", bm_sphere(0.012, 10, 6), (math.sin(a) * L * 0.6, -0.016, top + math.cos(a) * L * 0.55),
+               (0, a, 0), (0.55, 0.5, 2.0))
+    it.add(B, "Wood", bm_sphere(0.014, 12, 8), (0, -0.02, top + 0.005), scale=(1, 0.7, 1))
+    # точёная подвеска снизу
+    bz = cz - 0.205
+    it.lathe(B, "Wood", [(0, bz + 0.01), (0.016, bz + 0.01), (0.02, bz - 0.005), (0.012, bz - 0.02), (0.016, bz - 0.032),
+                         (0.008, bz - 0.048), (0.004, bz - 0.06), (0, bz - 0.064)], (0, -0.016, 0), segs=16)
+    # точёный кронштейн, из которого выходят рожки
+    mz = cz - 0.04
+    it.lathe(B, "Wood", [(0, 0), (0.03, 0), (0.034, 0.008), (0.026, 0.02), (0.02, 0.03), (0.024, 0.042), (0.03, 0.05),
+                         (0.026, 0.06), (0, 0.064)], (0, -0.03, mz), (PI / 2, 0, 0), segs=20)
+    it.add("Trim", "Brass", bm_torus(0.022, 0.004, 24, 6), (0, -0.075, mz), (PI / 2, 0, 0))
+    # рожки: плавная S-кривая, точёные кольца, завиток снизу, чашечка и свечная трубка
+    for sx in (-1, 1):
+        ctrl = [(0.0, -0.085, mz), (sx * 0.05, -0.11, mz - 0.03), (sx * 0.11, -0.135, mz - 0.025),
+                (sx * 0.155, -0.15, mz + 0.01), (sx * 0.172, -0.152, mz + 0.05), (sx * 0.175, -0.152, 0.225)]
+        path = catmull(ctrl, 10)
+        it.tube(A, "WoodDark", path, 0.011, segs=10)
+        for frac in (0.35, 0.75):
+            i = int(len(path) * frac)
+            p0, p1 = Vector(path[i]), Vector(path[min(i + 1, len(path) - 1)])
+            d = (p1 - p0).normalized()
+            q = d.to_track_quat('Z', 'Y').to_euler()
+            it.add("Trim", "Brass", bm_torus(0.0125, 0.0035, 18, 6), tuple(p0), tuple(q))
+        cx = sx * 0.1
+        curl = [(cx + sx * 0.026 * math.cos(t) * (1 - t / 9), -0.132, mz - 0.04 - 0.03 * (t / 7) + 0.026 * math.sin(t) * (1 - t / 9))
+                for t in np.linspace(0, 2.2 * PI, 30)]
+        it.tube(A, "WoodDark", [(cx, -0.132, mz - 0.025)] + curl, 0.0065, segs=8, r_end=0.003)
+        x = sx * 0.175
+        it.lathe(A, "WoodDark", [(0, 0.218), (0.014, 0.218), (0.03, 0.222), (0.045, 0.23), (0.048, 0.236),
+                                 (0.04, 0.236), (0.02, 0.24), (0.015, 0.245), (0, 0.245)], (x, -0.152, 0), segs=20)
+        it.cyl("Candles", "Wax", 0.012, 0.06, (x, -0.152, 0.275), segs=14)
+        it.add("Shades", "Shade", bm_pleated(0.1, 0.065, 0.27, 0.45), (x, -0.152, 0))
+        for zz, rr in ((0.27, 0.102), (0.45, 0.067)):
+            it.add("Trim", "Brass", bm_torus(rr, 0.004, 28, 5), (x, -0.152, zz))
 
 
 def round_table(it):
