@@ -1370,6 +1370,72 @@ def desk_bell_item(it):
     desk_bell(it, "", (0, 0, 0))
 
 
+def grand_chandelier(it):
+    """Деревянная люстра: потолочная чаша, цепь, точёный 8-гранный корпус-ваза, 8 изогнутых рожков
+    на двух уровнях, ступенчатые чашечки, колоколообразные 8-гранные абажуры с рёбрами."""
+    ph = PI / 8
+    B = "Body"
+    # потолочная чаша
+    it.lathe(B, "Wood", [(0, 1.1), (0.11, 1.1), (0.15, 1.115), (0.2, 1.125), (0.205, 1.16), (0.18, 1.175), (0, 1.175)],
+             segs=8, phase=ph)
+    it.lathe("Trim", "Brass", [(0.2, 1.124), (0.209, 1.128), (0.209, 1.135), (0.2, 1.139)], segs=8, phase=ph, closed=True)
+    # цепь из прямоугольных звеньев
+    z = 1.1
+    k = 0
+    while z > 0.76:
+        it.add("Chain", "Wood", rect_ring(-0.028, 0.028, z - 0.085, z, 0.014, -0.009, 0.009), rot=(0, 0, (k % 2) * PI / 2))
+        z -= 0.062
+        k += 1
+    # корпус: подвеска-шип, чаша, пояс с рожками, колонна, ваза, верхняя шапка
+    prof = [(0, 0.0), (0.012, 0.03), (0.032, 0.07), (0.056, 0.105), (0.046, 0.125), (0.062, 0.145), (0.05, 0.165),
+            (0.09, 0.19), (0.13, 0.225), (0.152, 0.265), (0.152, 0.3), (0.165, 0.31), (0.165, 0.335), (0.12, 0.345),
+            (0.1, 0.36), (0.1, 0.375), (0.13, 0.385), (0.13, 0.405), (0.1, 0.415), (0.122, 0.45), (0.112, 0.52),
+            (0.086, 0.575), (0.068, 0.598), (0.1, 0.608), (0.1, 0.63), (0.064, 0.64), (0.09, 0.66), (0.132, 0.68),
+            (0.132, 0.71), (0.1, 0.722), (0.06, 0.73), (0.045, 0.75), (0.03, 0.765), (0, 0.765)]
+    S = (1.2, 1.2, 1.0)                                  # корпус массивнее, как на референсе
+    it.lathe(B, "Wood", prof, segs=8, phase=ph, scale=S)
+    for zz, rr in ((0.165, 0.052), (0.303, 0.168), (0.335, 0.167), (0.395, 0.133), (0.618, 0.102), (0.695, 0.134)):
+        it.lathe("Trim", "Brass", [(rr - 0.004, zz - 0.004), (rr + 0.004, zz - 0.004), (rr + 0.004, zz + 0.004),
+                                   (rr - 0.004, zz + 0.004)], segs=8, phase=ph, closed=True, scale=S)
+    # рожки, чашечки, патроны, абажуры
+    for i in range(8):
+        a = i * PI / 4 + PI / 8
+        ca, sa = math.cos(a), math.sin(a)
+        long_arm = i % 2 == 0
+        if long_arm:
+            prof_a = [(0.15, 0.31), (0.25, 0.275), (0.38, 0.255), (0.49, 0.27), (0.555, 0.32), (0.575, 0.38)]
+        else:
+            prof_a = [(0.15, 0.325), (0.22, 0.33), (0.3, 0.355), (0.36, 0.41), (0.385, 0.47), (0.39, 0.5)]
+        pts = catmull([(r * ca, r * sa, zz) for r, zz in prof_a], 6)
+        it.tube("Arms", "Wood", pts, 0.026, segs=6)
+        rx, cz = prof_a[-1]
+        x, y = rx * ca, rx * sa
+        cup = [(0, cz - 0.01), (0.03, cz - 0.01), (0.05, cz), (0.068, cz + 0.015), (0.068, cz + 0.032),
+               (0.05, cz + 0.042), (0.04, cz + 0.05), (0.04, cz + 0.078), (0.052, cz + 0.084), (0.052, cz + 0.094), (0, cz + 0.094)]
+        it.lathe("Arms", "Wood", cup, (x, y, 0), segs=8, phase=ph)
+        it.lathe("Trim", "Brass", [(0.064, cz + 0.02), (0.072, cz + 0.02), (0.072, cz + 0.028), (0.064, cz + 0.028)],
+                 (x, y, 0), segs=8, phase=ph, closed=True)
+        it.cyl("Sockets", "WoodDark", 0.022, 0.06, (x, y, cz + 0.124), segs=8)
+        # абажур: 8-гранный колокол (тонкая оболочка), рёбра по граням, окантовка сверху и снизу
+        z0, h = cz + 0.085, 0.15
+        bell = [(0.122 - 0.047 * (t ** 0.7), z0 + h * t) for t in np.linspace(0, 1, 7)]
+        shell = bell + [(r - 0.004, zz) for r, zz in reversed(bell)]
+        it.lathe("Shades", "Shade", shell, (x, y, 0), segs=8, phase=ph, closed=True)
+        for zz, rr in ((z0, 0.123), (z0 + h, 0.076)):
+            it.lathe("ShadeFrames", "WoodDark", [(rr - 0.003, zz - 0.008), (rr + 0.006, zz - 0.008), (rr + 0.006, zz + 0.008),
+                                                 (rr - 0.003, zz + 0.008)], (x, y, 0), segs=8, phase=ph, closed=True)
+        for kk in range(8):
+            b = kk * PI / 4 + ph
+            rib = [(x + (r + 0.003) * math.cos(b), y + (r + 0.003) * math.sin(b), zz) for r, zz in bell]
+            it.tube("ShadeFrames", "WoodDark", rib, 0.0035, segs=4)
+    # завитки под корпусом
+    for i in range(4):
+        a = i * PI / 2
+        ca, sa = math.cos(a), math.sin(a)
+        prof_s = [(0.1, 0.235), (0.17, 0.21), (0.21, 0.16), (0.2, 0.115), (0.165, 0.1), (0.14, 0.12), (0.15, 0.145)]
+        it.tube("Arms", "Wood", catmull([(r * ca, r * sa, zz) for r, zz in prof_s], 5), 0.016, segs=6, r_end=0.011)
+
+
 ITEMS = [
     ("Wardrobe", wardrobe), ("Bookcase", bookcase), ("LuggageCart", luggage_cart), ("CoatRack", coat_rack),
     ("Plant", plant), ("Suitcase", lambda it: suitcase(it, "", (0.8, 0.42, 0.5), (0, 0, 0))),
@@ -1380,6 +1446,7 @@ ITEMS = [
     ("Chandelier", chandelier), ("Rug", None), ("Sconce", sconce), ("RoundTable", round_table),
     ("RectTable", rect_table), ("GrandClock", grand_clock), ("WallClock", wall_clock),
     ("FacetClock", facet_clock), ("ReceptionDesk", reception_desk), ("DeskBell", desk_bell_item),
+    ("GrandChandelier", grand_chandelier),
 ]
 RU = {"Wardrobe": "Шкаф", "Bookcase": "Книжный шкаф", "LuggageCart": "Тележка", "CoatRack": "Вешалка",
       "Plant": "Растение", "Suitcase": "Чемодан", "Painting": "Картина", "FloorLamp": "Торшер",
@@ -1389,7 +1456,8 @@ RU = {"Wardrobe": "Шкаф", "Bookcase": "Книжный шкаф", "LuggageCar
       "Chandelier": "Люстра", "Rug": "Ковёр", "Sconce": "Бра", "RoundTable": "Круглый стол",
       "RectTable": "Столик", "GrandClock": "Резные часы", "WallClock": "Настенные часы",
       "FacetClock": "Часы (12 граней)",
-      "ReceptionDesk": "Стол-стойка", "DeskBell": "Звонок портье"}
+      "ReceptionDesk": "Стол-стойка", "DeskBell": "Звонок портье",
+      "GrandChandelier": "Люстра с абажурами"}
 
 
 # ----------------------------------------------------------------------------- сборка в Blender
@@ -1526,7 +1594,7 @@ ROWS = [["Wardrobe", "Bookcase", "LuggageCart", "CoatRack", "Plant", "Suitcase",
         ["FloorLamp", "TableLamp", "Dresser", "Nightstand", "CoffeeTable", "Bench", "Door"],
         ["Fireplace", "Clock", "Mirror", "LuggageRack", "Curtains", "WallPanel"],
         ["Chandelier", "Sconce", "RoundTable", "RectTable", "Rug", "GrandClock", "WallClock", "FacetClock"],
-        ["ReceptionDesk", "DeskBell"]]
+        ["ReceptionDesk", "DeskBell", "GrandChandelier"]]
 
 
 def render(objs_by_item, out):
@@ -1569,7 +1637,7 @@ def render(objs_by_item, out):
             co = np.array([(o.matrix_world @ v.co)[:] for o in objs for v in o.data.vertices])
             lo, hi = co.min(0), co.max(0)
             dx = x - lo[0]
-            dz = {"Painting": 0.9, "Chandelier": 1.0, "Sconce": 1.0, "WallClock": 1.0, "FacetClock": 1.0}.get(name, 0.0)
+            dz = {"Painting": 0.9, "Chandelier": 1.0, "Sconce": 1.0, "WallClock": 1.0, "FacetClock": 1.0, "GrandChandelier": 1.0}.get(name, 0.0)
             if name == "Rug":                    # ковёр на превью приподнят к камере, чтобы был виден узор
                 for o in objs:
                     o.rotation_euler.x = math.radians(62)

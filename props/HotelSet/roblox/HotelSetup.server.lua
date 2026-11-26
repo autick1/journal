@@ -183,7 +183,14 @@ local PARTS = {
 	["ReceptionDesk_BellButton"] = "Brass",
 	["DeskBell_Base"] = "WoodDark",
 	["DeskBell_Dome"] = "Brass",
-	["DeskBell_Button"] = "Brass"
+	["DeskBell_Button"] = "Brass",
+	["GrandChandelier_Body"] = "Wood",
+	["GrandChandelier_Trim"] = "Brass",
+	["GrandChandelier_Chain"] = "Wood",
+	["GrandChandelier_Arms"] = "Wood",
+	["GrandChandelier_Sockets"] = "WoodDark",
+	["GrandChandelier_Shades"] = "Shade",
+	["GrandChandelier_ShadeFrames"] = "WoodDark"
 }
 
 -- деталь -> поведение
