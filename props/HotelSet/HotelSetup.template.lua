@@ -34,7 +34,7 @@ local BEHAVIORS = {
 }
 
 local LABELS = {
-	Wardrobe = "Шкаф", Dresser = "Комод", Nightstand = "Тумбочка", Door = "Дверь", ReceptionDesk = "Стол", Locker = "Шкафчик",
+	Wardrobe = "Шкаф", Dresser = "Комод", Nightstand = "Тумбочка", Door = "Дверь", ReceptionDesk = "Стол", Locker = "Шкафчик", BoilerDoor = "Дверь котельной",
 }
 
 local TweenService = game:GetService("TweenService")
@@ -263,6 +263,11 @@ local function decorate(p)
 		local l = Instance.new("PointLight")
 		l.Color, l.Brightness, l.Range, l.Shadows = Color3.fromRGB(255, 190, 120), 1.6, 16, true
 		l.Parent = p
+	elseif p.Name:match("_SteamOut$") then                  -- пар: белый, быстрый
+		p.CanCollide = false
+		local sm = Instance.new("Smoke")
+		sm.Color, sm.Opacity, sm.RiseVelocity, sm.Size = Color3.fromRGB(235, 235, 235), 0.18, 6, 1
+		sm.Parent = p
 	elseif p.Name:match("_SmokeOut$") then
 		p.CanCollide = false
 		local sm = Instance.new("Smoke")

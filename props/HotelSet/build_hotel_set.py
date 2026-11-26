@@ -1624,6 +1624,218 @@ def boiler(it):
     it.behaviors.append((f"{it.name}_Valve", "spin"))
 
 
+# ============================================================================= трубы под котёл
+PR = 0.045        # радиус трубы — как у патрубков котла
+FR = 0.068        # радиус фланца
+
+
+def flange(it, c, d, part="Pipe"):
+    """Фланец с болтами в точке c, ось трубы d."""
+    d = Vector(d).normalized()
+    q = d.to_track_quat('Z', 'Y').to_euler()
+    it.add(part, "Rust", bm_cyl(FR, 0.03, 16), tuple(c), tuple(q))
+    ref = Vector((0, 0, 1)) if abs(d.z) < 0.9 else Vector((1, 0, 0))
+    u = d.cross(ref).normalized()
+    v = d.cross(u).normalized()
+    for k in range(6):
+        a = 2 * PI * k / 6
+        p = Vector(c) + (u * math.cos(a) + v * math.sin(a)) * (FR - 0.014)
+        it.add("Bolts", "Iron", bm_cyl(0.008, 0.044, 6), tuple(p), tuple(q))
+
+
+def band(it, c, d, r=PR + 0.008):
+    d = Vector(d).normalized()
+    it.add("Pipe", "Rust", bm_cyl(r, 0.04, 14), tuple(c), tuple(d.to_track_quat('Z', 'Y').to_euler()))
+
+
+def pipe(it, pts, r=PR, segs=14, smooth_pts=False):
+    it.tube("Pipe", "Rust", catmull(pts, 6) if smooth_pts else pts, r, segs=segs)
+
+
+def pipe_straight(L):
+    def build(it):
+        h = L / 2
+        pipe(it, [(-h, 0, 0), (h, 0, 0)])
+        flange(it, (-h + 0.015, 0, 0), (1, 0, 0))
+        flange(it, (h - 0.015, 0, 0), (1, 0, 0))
+        n = max(1, int(L / 0.5) - 1)
+        for k in range(n):
+            band(it, (-h + L * (k + 1) / (n + 1), 0, 0), (1, 0, 0))
+    return build
+
+
+def arc_pts(c, r, a0, a1, n=10):
+    return [(c[0] + r * math.cos(a), 0, c[1] + r * math.sin(a)) for a in np.linspace(a0, a1, n)]
+
+
+def pipe_elbow(it):
+    rb = 0.2
+    pts = [(-0.5, 0, 0), (-rb - 0.001, 0, 0)] + arc_pts((-rb, rb), rb, -PI / 2, 0, 12)[1:] + [(0, 0, 0.5)]
+    pipe(it, pts)
+    flange(it, (-0.485, 0, 0), (1, 0, 0))
+    flange(it, (0, 0, 0.485), (0, 0, 1))
+
+
+def pipe_tee(it):
+    pipe(it, [(-0.5, 0, 0), (0.5, 0, 0)])
+    pipe(it, [(0, 0, 0), (0, 0, 0.5)])
+    it.add("Pipe", "Rust", bm_sphere(PR + 0.02, 14, 10), (0, 0, 0))
+    for c, d in (((-0.485, 0, 0), (1, 0, 0)), ((0.485, 0, 0), (1, 0, 0)), ((0, 0, 0.485), (0, 0, 1))):
+        flange(it, c, d)
+
+
+def pipe_cross(it):
+    pipe(it, [(-0.5, 0, 0), (0.5, 0, 0)])
+    pipe(it, [(0, 0, -0.5), (0, 0, 0.5)])
+    it.add("Pipe", "Rust", bm_sphere(PR + 0.022, 14, 10), (0, 0, 0))
+    for c, d in (((-0.485, 0, 0), (1, 0, 0)), ((0.485, 0, 0), (1, 0, 0)), ((0, 0, 0.485), (0, 0, 1)), ((0, 0, -0.485), (0, 0, 1))):
+        flange(it, c, d)
+
+
+def pipe_u(it):
+    rb = 0.25
+    pts = [(-rb, 0, 0), (-rb, 0, 0.25)] + arc_pts((0, 0.25), rb, PI, 0, 16)[1:-1] + [(rb, 0, 0.25), (rb, 0, 0)]
+    pipe(it, pts)
+    flange(it, (-rb, 0, 0.015), (0, 0, 1))
+    flange(it, (rb, 0, 0.015), (0, 0, 1))
+
+
+def pipe_s(it):
+    pipe(it, [(-0.5, 0, 0), (-0.25, 0, 0), (-0.05, 0, 0.08), (0.05, 0, 0.17), (0.25, 0, 0.25), (0.5, 0, 0.25)], smooth_pts=True)
+    flange(it, (-0.485, 0, 0), (1, 0, 0))
+    flange(it, (0.485, 0, 0.25), (1, 0, 0))
+
+
+def valve_wheel(it, c, axis_up=True, part="Valve"):
+    x, y, z = c
+    it.add(part, "RedPaint", bm_torus(0.095, 0.012, 32, 8), (x, y, z))
+    for k in range(5):
+        a = 2 * PI * k / 5
+        it.tube(part, "RedPaint", [(x, y, z), (x + 0.09 * math.cos(a), y + 0.09 * math.sin(a), z)], 0.008, segs=6)
+    it.cyl(part, "RedPaint", 0.02, 0.03, (x, y, z), segs=12)
+
+
+def pipe_valve(it):
+    pipe_straight(1.0)(it)
+    it.lathe("Pipe", "Rust", [(0, -0.12), (0.07, -0.12), (0.095, -0.07), (0.1, 0), (0.095, 0.07), (0.07, 0.12), (0, 0.12)],
+             (0, 0, 0), (0, PI / 2, 0), segs=16)
+    it.cyl("Pipe", "Rust", 0.04, 0.12, (0, 0, 0.12), segs=12)
+    it.cyl("Pipe", "Rust", 0.012, 0.16, (0, 0, 0.22), segs=8)
+    valve_wheel(it, (0, 0, 0.29))
+    it.behaviors.append((f"{it.name}_Valve", "spin"))
+
+
+def pipe_gauge(it):
+    pipe_straight(0.5)(it)
+    it.cyl("Pipe", "Rust", 0.018, 0.22, (0, 0, 0.13), segs=8)
+    it.cyl("Pipe", "Rust", 0.03, 0.03, (0, 0, 0.05), segs=8)
+    gz = 0.3
+    it.cyl("Gauge", "Iron", 0.1, 0.05, (0, 0, gz), (PI / 2, 0, 0), segs=32)
+    it.add("GaugeRim", "Brass", bm_torus(0.098, 0.007, 32, 6), (0, -0.025, gz), (PI / 2, 0, 0))
+    it.cyl("GaugeFace", "Paper", 0.088, 0.004, (0, -0.026, gz), (PI / 2, 0, 0), segs=32)
+    for k in range(11):
+        a = -0.75 * PI + 1.5 * PI * k / 10
+        it.box_at("GaugeTicks", "Black", (0.004, 0.002, 0.018 if k % 5 == 0 else 0.011),
+                  (0.07 * math.sin(a), -0.029, gz + 0.07 * math.cos(a)), (0, a, 0), bev=0)
+    it.add("GaugeNeedle", "Fire", bm_prism([(-0.004, gz - 0.01), (0.004, gz - 0.01), (0, gz + 0.07)], -0.034, -0.031))
+    it.cyl("GaugeNeedle", "Fire", 0.008, 0.004, (0, -0.033, gz), (PI / 2, 0, 0), segs=10)
+    it.behaviors.append((f"{it.name}_GaugeNeedle", "gauge"))
+
+
+def pipe_reducer(it):
+    """Переходник: широкий конец как у дымовой трубы котла (r 0.11), узкий — как у труб."""
+    it.lathe("Pipe", "Rust", [(0.11, -0.25), (0.11, -0.08), (PR, 0.1), (PR, 0.25)], (0, 0, 0), (0, PI / 2, 0), segs=16)
+    it.cyl("Pipe", "Rust", 0.135, 0.03, (-0.235, 0, 0), (0, PI / 2, 0), segs=16)
+    flange(it, (0.235, 0, 0), (1, 0, 0))
+
+
+def pipe_cap(it):
+    pipe(it, [(-0.25, 0, 0), (0.05, 0, 0)])
+    flange(it, (-0.235, 0, 0), (1, 0, 0))
+    it.lathe("Pipe", "Rust", [(0, 0.12), (0.03, 0.115), (0.055, 0.095), (0.06, 0.05), (0.06, 0.02), (0, 0.02)],
+             (0, 0, 0), (0, PI / 2, 0), segs=16)
+
+
+def pipe_stand(it):
+    """Напольная опора: труба на высоте 0.6 м (ось трубы — z=0, пол — z=-0.6)."""
+    it.bx("Stand", "Rust", (-0.15, 0.15), (-0.15, 0.15), (-0.6, -0.58), 0.004)
+    it.cyl("Stand", "Rust", 0.03, 0.5, (0, 0, -0.33), segs=10)
+    it.bx("Stand", "Rust", (-0.03, 0.03), (-0.08, 0.08), (-0.1, -0.075), 0.003)
+    it.add("Stand", "Rust", bm_torus(PR + 0.012, 0.01, 20, 6), (0, 0, 0), (0, PI / 2, 0))
+    for s in (-1, 1):
+        it.bx("Stand", "Rust", (-0.012, 0.012), sorted((s * (PR + 0.005), s * (PR + 0.035))), (-0.08, 0.0), 0.002)
+    it.cyl("Bolts", "Iron", 0.008, 0.14, (0, 0, -0.065), (PI / 2, 0, 0), segs=6)
+
+
+def pipe_wall_bracket(it):
+    """Настенный хомут: стена — плоскость y=+0.15, ось трубы — начало координат."""
+    it.bx("Bracket", "Rust", (-0.06, 0.06), (0.14, 0.15), (-0.08, 0.08), 0.003)
+    it.bx("Bracket", "Rust", (-0.02, 0.02), (PR, 0.14), (-0.015, 0.015), 0.003)
+    it.add("Bracket", "Rust", bm_torus(PR + 0.012, 0.01, 20, 6), (0, 0, 0), (0, PI / 2, 0))
+    for zz in (-0.05, 0.05):
+        it.cyl("Bolts", "Iron", 0.01, 0.02, (0, 0.135, zz), (PI / 2, 0, 0), segs=6)
+
+
+def pipe_vent(it):
+    """Выпуск пара: вертикальный патрубок с колпаком, из-под колпака идёт пар."""
+    pipe(it, [(0, 0, -0.25), (0, 0, 0.35)])
+    flange(it, (0, 0, -0.235), (0, 0, 1))
+    band(it, (0, 0, 0.1), (0, 0, 1))
+    it.lathe("Pipe", "Rust", [(0, 0.4), (0.09, 0.4), (0.12, 0.43), (0.06, 0.48), (0, 0.49)], segs=14)
+    for k in range(3):
+        a = 2 * PI * k / 3
+        it.tube("Pipe", "Rust", [(0.03 * math.cos(a), 0.03 * math.sin(a), 0.34), (0.06 * math.cos(a), 0.06 * math.sin(a), 0.41)], 0.006, segs=4)
+    it.bx("SteamOut", "Hidden", (-0.02, 0.02), (-0.02, 0.02), (0.36, 0.39), 0)
+
+
+# ============================================================================= дверь котельной
+def boiler_door(it):
+    """Тяжёлая клёпаная металлическая дверь: рама, полотно с рёбрами, решётчатое окошко, штурвал-ручка."""
+    B = "Body"
+    M = "Rust"
+    W, H = 1.0, 2.1
+    w = W / 2
+    for sx in (-1, 1):
+        it.bx(B, M, sorted((sx * w, sx * (w + 0.09))), (-0.09, 0.09), (0, H + 0.09), 0.006)
+        for k in range(12):
+            it.add("Rivets", "Iron", bm_sphere(0.01, 6, 4), (sx * (w + 0.045), -0.093, 0.1 + k * 0.17))
+    it.bx(B, M, (-w - 0.09, w + 0.09), (-0.09, 0.09), (H, H + 0.09), 0.006)
+    it.bx(B, M, (-w - 0.11, w + 0.11), (-0.1, 0.1), (H + 0.09, H + 0.12), 0.006)
+    it.bx(B, M, (-w, w), (-0.09, 0.09), (0, 0.02), 0.003)                    # порог
+    L = "Leaf"
+    lw = w - 0.006
+    it.bx(L, M, (-lw, lw), (-0.035, 0.035), (0.025, H - 0.006), 0.006)
+    for zc in (0.35, 0.85, 1.35):                                          # горизонтальные рёбра
+        it.bx(L, M, (-lw + 0.04, lw - 0.04), (-0.055, -0.035), (zc - 0.035, zc + 0.035), 0.008, 2)
+        it.bx(L, M, (-lw + 0.04, lw - 0.04), (0.035, 0.055), (zc - 0.035, zc + 0.035), 0.008, 2)
+    for sy in (-1, 1):                                                     # рамка полотна с заклёпками
+        yy = sorted((sy * 0.035, sy * 0.05))
+        it.add(L, M, rect_ring(-lw, lw, 0.025, H - 0.006, 0.05, *yy))
+        for x in np.linspace(-lw + 0.025, lw - 0.025, 9):
+            for zz in (0.05, H - 0.03):
+                it.add("Rivets", "Iron", bm_sphere(0.009, 6, 4), (x, sy * 0.052, zz))
+        for zz in np.linspace(0.1, H - 0.1, 14):
+            for x in (-lw + 0.025, lw - 0.025):
+                it.add("Rivets", "Iron", bm_sphere(0.009, 6, 4), (x, sy * 0.052, zz))
+    # окошко с решёткой
+    wz0, wz1, ww = 1.6, 1.9, 0.16
+    it.add(L, M, rect_ring(-ww - 0.03, ww + 0.03, wz0 - 0.03, wz1 + 0.03, 0.03, -0.06, -0.035))
+    it.bx(f"{L}_Glass", "Glass", (-ww, ww), (-0.004, 0.004), (wz0, wz1), 0)
+    for x in np.linspace(-ww + 0.05, ww - 0.05, 4):
+        it.cyl(f"{L}_Grille", "Iron", 0.008, wz1 - wz0, (x, -0.05, (wz0 + wz1) / 2), segs=6)
+    # штурвал-ручка (по ней скрипт понимает, где петли — с другой стороны)
+    hx, hz = lw - 0.2, 1.05
+    it.cyl(f"{L}_Handle", "RedPaint", 0.03, 0.08, (hx, -0.075, hz), (PI / 2, 0, 0), segs=10)
+    it.add(f"{L}_Handle", "RedPaint", bm_torus(0.11, 0.013, 32, 8), (hx, -0.12, hz), (PI / 2, 0, 0))
+    for k in range(4):
+        a = PI / 4 + k * PI / 2
+        it.tube(f"{L}_Handle", "RedPaint", [(hx, -0.12, hz), (hx + 0.105 * math.cos(a), -0.12, hz + 0.105 * math.sin(a))], 0.009, segs=6)
+    # петли на раме (слева)
+    for zc in (0.35, 1.05, 1.75):
+        it.cyl("Hinges", "Iron", 0.03, 0.16, (-w - 0.01, -0.07, zc), segs=10)
+    it.behaviors.append((f"{it.name}_{L}", "hinge"))
+
+
 ITEMS = [
     ("Wardrobe", wardrobe), ("Bookcase", bookcase), ("LuggageCart", luggage_cart), ("CoatRack", coat_rack),
     ("Plant", plant), ("Suitcase", lambda it: suitcase(it, "", (0.8, 0.42, 0.5), (0, 0, 0))),
@@ -1635,7 +1847,11 @@ ITEMS = [
     ("RectTable", rect_table), ("GrandClock", grand_clock), ("WallClock", wall_clock),
     ("FacetClock", facet_clock), ("ReceptionDesk", reception_desk), ("DeskBell", desk_bell_item),
     ("GrandChandelier", grand_chandelier), ("Locker", locker),
-    ("Boiler", boiler),
+    ("Boiler", boiler), ("BoilerDoor", boiler_door),
+    ("PipeShort", pipe_straight(0.5)), ("PipeStraight", pipe_straight(1.0)), ("PipeLong", pipe_straight(2.0)),
+    ("PipeElbow", pipe_elbow), ("PipeTee", pipe_tee), ("PipeCross", pipe_cross), ("PipeU", pipe_u),
+    ("PipeS", pipe_s), ("PipeValve", pipe_valve), ("PipeGauge", pipe_gauge), ("PipeReducer", pipe_reducer),
+    ("PipeCap", pipe_cap), ("PipeStand", pipe_stand), ("PipeBracket", pipe_wall_bracket), ("PipeVent", pipe_vent),
 ]
 RU = {"Wardrobe": "Шкаф", "Bookcase": "Книжный шкаф", "LuggageCart": "Тележка", "CoatRack": "Вешалка",
       "Plant": "Растение", "Suitcase": "Чемодан", "Painting": "Картина", "FloorLamp": "Торшер",
@@ -1647,7 +1863,11 @@ RU = {"Wardrobe": "Шкаф", "Bookcase": "Книжный шкаф", "LuggageCar
       "FacetClock": "Часы (12 граней)",
       "ReceptionDesk": "Стол-стойка", "DeskBell": "Звонок портье",
       "GrandChandelier": "Люстра с абажурами",
-      "Locker": "Металлический шкафчик", "Boiler": "Паровой котёл"}
+      "Locker": "Металлический шкафчик", "Boiler": "Паровой котёл",
+      "BoilerDoor": "Дверь котельной", "PipeShort": "Труба 0.5 м", "PipeStraight": "Труба 1 м", "PipeLong": "Труба 2 м",
+      "PipeElbow": "Колено 90°", "PipeTee": "Тройник", "PipeCross": "Крестовина", "PipeU": "U-труба", "PipeS": "S-отвод",
+      "PipeValve": "Труба с вентилем", "PipeGauge": "Труба с манометром", "PipeReducer": "Переходник",
+      "PipeCap": "Заглушка", "PipeStand": "Опора", "PipeBracket": "Настенный хомут", "PipeVent": "Выпуск пара"}
 
 
 # ----------------------------------------------------------------------------- сборка в Blender
@@ -1798,7 +2018,9 @@ ROWS = [["Wardrobe", "Bookcase", "LuggageCart", "CoatRack", "Plant", "Suitcase",
         ["FloorLamp", "TableLamp", "Dresser", "Nightstand", "CoffeeTable", "Bench", "Door"],
         ["Fireplace", "Clock", "Mirror", "LuggageRack", "Curtains", "WallPanel"],
         ["Chandelier", "Sconce", "RoundTable", "RectTable", "Rug", "GrandClock", "WallClock", "FacetClock"],
-        ["ReceptionDesk", "DeskBell", "GrandChandelier", "Locker", "Boiler"]]
+        ["ReceptionDesk", "DeskBell", "GrandChandelier", "Locker", "Boiler", "BoilerDoor"],
+        ["PipeShort", "PipeStraight", "PipeLong", "PipeElbow", "PipeTee", "PipeCross", "PipeU", "PipeS"],
+        ["PipeValve", "PipeGauge", "PipeReducer", "PipeCap", "PipeStand", "PipeBracket", "PipeVent"]]
 
 
 def render(objs_by_item, out):
@@ -1841,7 +2063,8 @@ def render(objs_by_item, out):
             co = np.array([(o.matrix_world @ v.co)[:] for o in objs for v in o.data.vertices])
             lo, hi = co.min(0), co.max(0)
             dx = x - lo[0]
-            dz = {"Painting": 0.9, "Chandelier": 1.0, "Sconce": 1.0, "WallClock": 1.0, "FacetClock": 1.0, "GrandChandelier": 1.0}.get(name, 0.0)
+            dz = {"Painting": 0.9, "Chandelier": 1.0, "Sconce": 1.0, "WallClock": 1.0, "FacetClock": 1.0,
+                  "GrandChandelier": 1.0, "PipeStand": 0.6}.get(name, 0.55 if name.startswith("Pipe") else 0.0)
             if name == "Rug":                    # ковёр на превью приподнят к камере, чтобы был виден узор
                 for o in objs:
                     o.rotation_euler.x = math.radians(62)

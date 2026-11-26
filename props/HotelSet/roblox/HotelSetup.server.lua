@@ -221,7 +221,51 @@ local PARTS = {
 	["Boiler_GaugeFace"] = "Paper",
 	["Boiler_GaugeTicks"] = "Black",
 	["Boiler_GaugeNeedle"] = "Fire",
-	["Boiler_Valve"] = "RedPaint"
+	["Boiler_Valve"] = "RedPaint",
+	["BoilerDoor_Body"] = "Rust",
+	["BoilerDoor_Rivets"] = "Iron",
+	["BoilerDoor_Leaf"] = "Rust",
+	["BoilerDoor_Leaf_Glass"] = "Glass",
+	["BoilerDoor_Leaf_Grille"] = "Iron",
+	["BoilerDoor_Leaf_Handle"] = "RedPaint",
+	["BoilerDoor_Hinges"] = "Iron",
+	["PipeShort_Pipe"] = "Rust",
+	["PipeShort_Bolts"] = "Iron",
+	["PipeStraight_Pipe"] = "Rust",
+	["PipeStraight_Bolts"] = "Iron",
+	["PipeLong_Pipe"] = "Rust",
+	["PipeLong_Bolts"] = "Iron",
+	["PipeElbow_Pipe"] = "Rust",
+	["PipeElbow_Bolts"] = "Iron",
+	["PipeTee_Pipe"] = "Rust",
+	["PipeTee_Bolts"] = "Iron",
+	["PipeCross_Pipe"] = "Rust",
+	["PipeCross_Bolts"] = "Iron",
+	["PipeU_Pipe"] = "Rust",
+	["PipeU_Bolts"] = "Iron",
+	["PipeS_Pipe"] = "Rust",
+	["PipeS_Bolts"] = "Iron",
+	["PipeValve_Pipe"] = "Rust",
+	["PipeValve_Bolts"] = "Iron",
+	["PipeValve_Valve"] = "RedPaint",
+	["PipeGauge_Pipe"] = "Rust",
+	["PipeGauge_Bolts"] = "Iron",
+	["PipeGauge_Gauge"] = "Iron",
+	["PipeGauge_GaugeRim"] = "Brass",
+	["PipeGauge_GaugeFace"] = "Paper",
+	["PipeGauge_GaugeTicks"] = "Black",
+	["PipeGauge_GaugeNeedle"] = "Fire",
+	["PipeReducer_Pipe"] = "Rust",
+	["PipeReducer_Bolts"] = "Iron",
+	["PipeCap_Pipe"] = "Rust",
+	["PipeCap_Bolts"] = "Iron",
+	["PipeStand_Stand"] = "Rust",
+	["PipeStand_Bolts"] = "Iron",
+	["PipeBracket_Bracket"] = "Rust",
+	["PipeBracket_Bolts"] = "Iron",
+	["PipeVent_Pipe"] = "Rust",
+	["PipeVent_Bolts"] = "Iron",
+	["PipeVent_SteamOut"] = "Hidden"
 }
 
 -- деталь -> поведение
@@ -255,11 +299,14 @@ local BEHAVIORS = {
 	["Locker_DoorR"] = "hinge",
 	["Boiler_Door"] = "hinge",
 	["Boiler_GaugeNeedle"] = "gauge",
-	["Boiler_Valve"] = "spin"
+	["Boiler_Valve"] = "spin",
+	["BoilerDoor_Leaf"] = "hinge",
+	["PipeValve_Valve"] = "spin",
+	["PipeGauge_GaugeNeedle"] = "gauge"
 }
 
 local LABELS = {
-	Wardrobe = "Шкаф", Dresser = "Комод", Nightstand = "Тумбочка", Door = "Дверь", ReceptionDesk = "Стол", Locker = "Шкафчик",
+	Wardrobe = "Шкаф", Dresser = "Комод", Nightstand = "Тумбочка", Door = "Дверь", ReceptionDesk = "Стол", Locker = "Шкафчик", BoilerDoor = "Дверь котельной",
 }
 
 local TweenService = game:GetService("TweenService")
@@ -488,6 +535,11 @@ local function decorate(p)
 		local l = Instance.new("PointLight")
 		l.Color, l.Brightness, l.Range, l.Shadows = Color3.fromRGB(255, 190, 120), 1.6, 16, true
 		l.Parent = p
+	elseif p.Name:match("_SteamOut$") then                  -- пар: белый, быстрый
+		p.CanCollide = false
+		local sm = Instance.new("Smoke")
+		sm.Color, sm.Opacity, sm.RiseVelocity, sm.Size = Color3.fromRGB(235, 235, 235), 0.18, 6, 1
+		sm.Parent = p
 	elseif p.Name:match("_SmokeOut$") then
 		p.CanCollide = false
 		local sm = Instance.new("Smoke")
