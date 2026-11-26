@@ -57,6 +57,8 @@ PALETTE = {
     "Flame":      ((255, 190, 90), "Neon", 0.1, 0, 0.5),
     "Ink":        ((72, 30, 20), "SmoothPlastic", 0, 0, 0.5),
     "Rust":       ((74, 36, 30), "CorrodedMetal", 0, 0, 0.75),
+    "RedPaint":   ((150, 24, 20), "CorrodedMetal", 0, 0, 0.6),
+    "Hidden":     ((0, 0, 0), "SmoothPlastic", 1, 0, 1.0),
 }
 
 
@@ -1498,6 +1500,130 @@ def locker(it):
         it.behaviors.append((f"{it.name}_{name}", "hinge"))
 
 
+def boiler(it):
+    """Паровой котёл: клёпаный бак, торец с дверцей топки (открывается, внутри огонь), U-труба,
+    манометр (стрелка дрожит), дымовая труба (дым), красный вентиль (крутится), опоры и рама."""
+    M = "Rust"
+    R, L, cz = 0.45, 1.6, 0.78                           # радиус, длина, высота оси бака (ось — X)
+    x0, x1 = -L / 2, L / 2
+    B = "Body"
+    # рама и опоры
+    for y in (-0.42, 0.42):
+        it.bx(B, M, (-0.95, 0.95), (y - 0.05, y + 0.05), (0.0, 0.09), 0.006)
+    for x in (-0.85, -0.3, 0.3, 0.85):
+        it.bx(B, M, (x - 0.04, x + 0.04), (-0.47, 0.47), (0.02, 0.08), 0.004)
+    it.bx(B, M, (-0.97, 0.97), (-0.5, 0.5), (0.09, 0.11), 0.004)
+    for xs in (-0.48, 0.48):
+        sad = [(-0.38, 0.11), (0.38, 0.11), (0.38, 0.42)] + \
+              [(R * 0.99 * math.cos(a), cz + R * 0.99 * math.sin(a)) for a in np.linspace(-0.55, -PI + 0.55, 16)] + \
+              [(-0.38, 0.42)]
+        it.add(B, M, bm_prism(sad, xs - 0.04, xs + 0.04), rot=(0, 0, PI / 2))
+        it.bx(B, M, (xs - 0.07, xs + 0.07), (-0.4, 0.4), (0.11, 0.14), 0.004)
+    # бак — открытая обечайка (в торце дверца в топку)
+    it.add(B, M, bm_tube([(x0, 0, cz), (x1, 0, cz)], R, segs=40, caps=False))
+    it.add(B, M, bm_tube([(x0 + 0.02, 0, cz), (x1 - 0.02, 0, cz)], R - 0.012, segs=40, caps=False))
+    for xb in (-0.42, 0.05, 0.5):                        # пояса со швами
+        it.add(B, M, bm_torus(R + 0.004, 0.012, 40, 6), (xb, 0, cz), (0, PI / 2, 0))
+        for k in range(24):
+            a = 2 * PI * k / 24
+            it.add("Rivets", M, bm_sphere(0.009, 6, 4), (xb + 0.025, (R + 0.008) * math.cos(a), cz + (R + 0.008) * math.sin(a)))
+    # задний торец — глухое днище
+    it.cyl(B, M, R + 0.02, 0.05, (x1 + 0.005, 0, cz), (0, PI / 2, 0), segs=40)
+    it.cyl(B, M, R - 0.06, 0.03, (x1 + 0.035, 0, cz), (0, PI / 2, 0), segs=40)
+    # передний торец — кольцо с проёмом топки (контур проёма — прямоугольник)
+    dw, dh = 0.17, 0.19                                  # полуширина/полувысота проёма
+    n = 40
+    outer, inner = [], []
+    for k in range(n):
+        a = 2 * PI * k / n
+        outer.append(((R + 0.03) * math.cos(a), cz + (R + 0.03) * math.sin(a)))
+        c, s = math.cos(a), math.sin(a)
+        tt = min(dw / max(abs(c), 1e-6), dh / max(abs(s), 1e-6))
+        inner.append((tt * c, cz + tt * s))
+    ring = bm_ring_prism(outer, inner, -0.03, 0.03)
+    it.add(B, M, ring, (x0 - 0.02, 0, 0), (0, 0, PI / 2))
+    it.add(B, M, bm_torus(R + 0.02, 0.015, 40, 6), (x0 - 0.05, 0, cz), (0, PI / 2, 0))
+    for k in range(28):
+        a = 2 * PI * k / 28
+        it.add("Rivets", M, bm_sphere(0.011, 6, 4), (x0 - 0.052, (R - 0.02) * math.cos(a), cz + (R - 0.02) * math.sin(a)))
+    # топка внутри: тёмная камера, колосники, огонь
+    it.bx("Firebox", "Mortar", (x0, x0 + 0.42), (-dw - 0.02, dw + 0.02), (cz - dh - 0.02, cz - dh), 0)
+    it.bx("Firebox", "Mortar", (x0, x0 + 0.42), (-dw - 0.02, dw + 0.02), (cz + dh, cz + dh + 0.02), 0)
+    for s in (-1, 1):
+        it.bx("Firebox", "Mortar", (x0, x0 + 0.42), sorted((s * dw, s * (dw + 0.02))), (cz - dh, cz + dh), 0)
+    it.bx("Firebox", "Mortar", (x0 + 0.4, x0 + 0.42), (-dw, dw), (cz - dh, cz + dh), 0)
+    for k in range(5):
+        it.bx("Grate", "Iron", (x0 + 0.02, x0 + 0.4), (-dw + 0.03 + k * 0.07, -dw + 0.045 + k * 0.07), (cz - dh + 0.03, cz - dh + 0.045), 0)
+    rnd = random.Random(9)
+    for k in range(7):
+        h = rnd.uniform(0.08, 0.16)
+        it.add("Fire", "Fire", bm_cyl(0.035, h, 6, 0.003),
+               (x0 + rnd.uniform(0.1, 0.32), rnd.uniform(-0.11, 0.11), cz - dh + 0.05 + h / 2), scale=(0.7, 1, 1))
+    # дверца топки (на петлях слева, защёлка справа)
+    xd = x0 - 0.06
+    D = "Door"
+    it.bx(D, M, (xd - 0.02, xd), (-dw - 0.03, dw + 0.03), (cz - dh - 0.03, cz + dh + 0.03), 0.004)
+    it.bx(D, M, (xd - 0.03, xd - 0.02), (-dw + 0.02, dw - 0.02), (cz - dh + 0.02, cz + dh - 0.02), 0.006)
+    for k in range(3):                                   # прорези поддувала
+        it.bx(f"{D}_Vents", "Black", (xd - 0.031, xd - 0.029), (-0.09, 0.09), (cz - 0.13 + k * 0.03, cz - 0.115 + k * 0.03), 0)
+    for yy in (-dw - 0.015, dw + 0.015):
+        for zz in (cz - dh - 0.015, cz + dh + 0.015):
+            it.add(D, M, bm_sphere(0.01, 6, 4), (xd - 0.022, yy, zz))
+    for zz in (cz - 0.1, cz + 0.1):                       # петли (детали двери)
+        it.cyl(D, M, 0.014, 0.07, (xd - 0.012, -dw - 0.045, zz), segs=8)
+        it.bx(D, M, (xd - 0.02, xd - 0.008), (-dw - 0.05, -dw + 0.02), (zz - 0.025, zz + 0.025), 0.002)
+    it.bx(f"{D}_Handle", "Iron", (xd - 0.07, xd - 0.025), (dw - 0.03, dw - 0.01), (cz - 0.01, cz + 0.01), 0.003)
+    it.bx(f"{D}_Handle", "Iron", (xd - 0.075, xd - 0.06), (dw - 0.09, dw - 0.01), (cz - 0.012, cz + 0.012), 0.003)
+    it.behaviors.append((f"{it.name}_{D}", "hinge"))
+    # U-труба сверху
+    top = cz + R
+    px0, px1, pr = -0.55, -0.22, 0.045
+    path = [(px0, 0, top - 0.02), (px0, 0, top + 0.2)] + \
+           [((px0 + px1) / 2 - (px1 - px0) / 2 * math.cos(a), 0, top + 0.2 + (px1 - px0) / 2 * math.sin(a)) for a in np.linspace(0, PI, 14)] + \
+           [(px1, 0, top + 0.2), (px1, 0, top - 0.02)]
+    it.tube("Pipes", M, path, pr, segs=12)
+    for x, z in ((px0, top + 0.04), (px1, top + 0.04), (px0, top + 0.19), (px1, top + 0.19)):
+        it.cyl("Pipes", M, pr + 0.022, 0.03, (x, 0, z), segs=12)
+    # дымовая труба
+    cx = 0.55
+    it.cyl("Pipes", M, 0.13, 0.08, (cx, 0, top + 0.0), segs=16)
+    it.cyl("Pipes", M, 0.11, 0.5, (cx, 0, top + 0.25), segs=16)
+    for z in (top + 0.12, top + 0.38):
+        it.cyl("Pipes", M, 0.125, 0.03, (cx, 0, z), segs=16)
+    it.lathe("Pipes", M, [(0.11, top + 0.5), (0.14, top + 0.51), (0.14, top + 0.56), (0.1, top + 0.56), (0.1, top + 0.5)],
+             (cx, 0, 0), segs=16, closed=True)
+    it.bx("SmokeOut", "Hidden", (cx - 0.02, cx + 0.02), (-0.02, 0.02), (top + 0.55, top + 0.6), 0)
+    # сливная труба сзади внизу
+    it.tube("Pipes", M, [(x1 - 0.1, 0.2, cz - R + 0.05), (x1 - 0.1, 0.38, cz - R + 0.02), (x1 - 0.1, 0.4, 0.2), (x1 - 0.1, 0.4, 0.12)],
+            0.022, segs=8)
+    # манометр на стойке
+    gx, gz = 0.0, top + 0.27
+    it.cyl("Pipes", M, 0.018, 0.2, (gx, 0, top + 0.1), segs=8)
+    it.cyl("Pipes", M, 0.03, 0.03, (gx, 0, top + 0.02), segs=8)
+    it.cyl("Gauge", "Iron", 0.12, 0.06, (gx, 0.0, gz), (PI / 2, 0, 0), segs=32)
+    it.add("GaugeRim", "Brass", bm_torus(0.118, 0.008, 32, 6), (gx, -0.03, gz), (PI / 2, 0, 0))
+    it.cyl("GaugeFace", "Paper", 0.105, 0.004, (gx, -0.031, gz), (PI / 2, 0, 0), segs=32)
+    for k in range(11):                                  # шкала: дуга 270°
+        a = -0.75 * PI + 1.5 * PI * k / 10
+        L2 = 0.022 if k % 5 == 0 else 0.013
+        it.box_at("GaugeTicks", "Black", (0.004, 0.002, L2), (gx + 0.085 * math.sin(a), -0.034, gz + 0.085 * math.cos(a)), (0, a, 0), bev=0)
+    it.bx("GaugeTicks", "Black", (gx - 0.02, gx + 0.02), (-0.0345, -0.0335), (gz - 0.065, gz - 0.06), 0)
+    it.add("GaugeNeedle", "Fire", bm_prism([(gx - 0.004, gz - 0.01), (gx + 0.004, gz - 0.01), (gx, gz + 0.085)], -0.039, -0.036))
+    it.cyl("GaugeNeedle", "Fire", 0.009, 0.004, (gx, -0.038, gz), (PI / 2, 0, 0), segs=10)
+    it.behaviors.append((f"{it.name}_GaugeNeedle", "gauge"))
+    # красный вентиль спереди
+    vx, vz = 0.12, cz + 0.02
+    it.cyl("Pipes", M, 0.05, 0.04, (vx, -R - 0.01, vz), (PI / 2, 0, 0), segs=12)
+    it.cyl("Pipes", M, 0.016, 0.14, (vx, -R - 0.08, vz), (PI / 2, 0, 0), segs=8)
+    yv = -R - 0.15
+    it.add("Valve", "RedPaint", bm_torus(0.105, 0.013, 32, 8), (vx, yv, vz), (PI / 2, 0, 0))
+    for k in range(5):
+        a = 2 * PI * k / 5
+        it.tube("Valve", "RedPaint", [(vx, yv, vz), (vx + 0.1 * math.sin(a), yv, vz + 0.1 * math.cos(a))], 0.008, segs=6)
+    it.cyl("Valve", "RedPaint", 0.022, 0.03, (vx, yv, vz), (PI / 2, 0, 0), segs=12)
+    it.behaviors.append((f"{it.name}_Valve", "spin"))
+
+
 ITEMS = [
     ("Wardrobe", wardrobe), ("Bookcase", bookcase), ("LuggageCart", luggage_cart), ("CoatRack", coat_rack),
     ("Plant", plant), ("Suitcase", lambda it: suitcase(it, "", (0.8, 0.42, 0.5), (0, 0, 0))),
@@ -1509,6 +1635,7 @@ ITEMS = [
     ("RectTable", rect_table), ("GrandClock", grand_clock), ("WallClock", wall_clock),
     ("FacetClock", facet_clock), ("ReceptionDesk", reception_desk), ("DeskBell", desk_bell_item),
     ("GrandChandelier", grand_chandelier), ("Locker", locker),
+    ("Boiler", boiler),
 ]
 RU = {"Wardrobe": "Шкаф", "Bookcase": "Книжный шкаф", "LuggageCart": "Тележка", "CoatRack": "Вешалка",
       "Plant": "Растение", "Suitcase": "Чемодан", "Painting": "Картина", "FloorLamp": "Торшер",
@@ -1520,7 +1647,7 @@ RU = {"Wardrobe": "Шкаф", "Bookcase": "Книжный шкаф", "LuggageCar
       "FacetClock": "Часы (12 граней)",
       "ReceptionDesk": "Стол-стойка", "DeskBell": "Звонок портье",
       "GrandChandelier": "Люстра с абажурами",
-      "Locker": "Металлический шкафчик"}
+      "Locker": "Металлический шкафчик", "Boiler": "Паровой котёл"}
 
 
 # ----------------------------------------------------------------------------- сборка в Blender
@@ -1541,6 +1668,8 @@ def make_material(key, tex=None):
     if key == "Shade":
         b.inputs["Emission Color"].default_value = (*c, 1)
         b.inputs["Emission Strength"].default_value = 0.6
+    if key == "Hidden":
+        b.inputs["Alpha"].default_value = 0.0
     if key == "Rust":                                     # превью ржавчины (в Roblox — материал CorrodedMetal)
         nt = m.node_tree
         noise = nt.nodes.new("ShaderNodeTexNoise")
@@ -1669,7 +1798,7 @@ ROWS = [["Wardrobe", "Bookcase", "LuggageCart", "CoatRack", "Plant", "Suitcase",
         ["FloorLamp", "TableLamp", "Dresser", "Nightstand", "CoffeeTable", "Bench", "Door"],
         ["Fireplace", "Clock", "Mirror", "LuggageRack", "Curtains", "WallPanel"],
         ["Chandelier", "Sconce", "RoundTable", "RectTable", "Rug", "GrandClock", "WallClock", "FacetClock"],
-        ["ReceptionDesk", "DeskBell", "GrandChandelier", "Locker"]]
+        ["ReceptionDesk", "DeskBell", "GrandChandelier", "Locker", "Boiler"]]
 
 
 def render(objs_by_item, out):

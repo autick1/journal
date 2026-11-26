@@ -7,6 +7,7 @@
 	  * закрепляет детали (Anchored);
 	  * двери шкафа и комнаты открываются, ящики комода и тумбочки выдвигаются (подсказка E);
 	  * часы показывают текущее время, маятник качается;
+	  * паровой котёл: вентиль крутится (E), стрелка манометра дрожит и подскакивает, из трубы дым;
 	  * звонок портье: нажатие (E или клик) — кнопка уходит вниз и пружинит, купол дрожит, звучит BELL_SOUND;
 	  * в камине горит огонь, лампы, бра и люстра светят, на банкетку можно сесть.
 	Предметы, добавленные в Workspace позже (копии), настраиваются автоматически.
@@ -204,11 +205,69 @@ local function setupPress(model, button)
 	click.MouseClick:Connect(ring)
 end
 
+local function thinAxis(part)                -- ось «из плоскости» детали = самая тонкая сторона
+	local s = part.Size
+	local ax = (s.X <= s.Y and s.X <= s.Z) and Vector3.xAxis or ((s.Y <= s.Z) and Vector3.yAxis or Vector3.zAxis)
+	return part.CFrame:VectorToWorldSpace(ax)
+end
+
+local function setupSpin(model, main)             -- вентиль: полтора оборота по E, «давление» растёт
+	local axis = thinAxis(main)
+	local c0 = main.CFrame
+	local value = Instance.new("NumberValue")
+	value.Name = "SpinAngle"
+	value.Parent = main
+	value.Changed:Connect(function(a)
+		main.CFrame = CFrame.new(c0.Position) * CFrame.fromAxisAngle(axis, a) * (c0 - c0.Position)
+	end)
+	local prompt = Instance.new("ProximityPrompt")
+	prompt.ActionText, prompt.ObjectText = "Крутить вентиль", "Котёл"
+	prompt.MaxActivationDistance, prompt.RequiresLineOfSight = 8, false
+	prompt.Parent = main
+	local busy = false
+	prompt.Triggered:Connect(function()
+		if busy then return end
+		busy = true
+		local tw = TweenService:Create(value, TweenInfo.new(1.2, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut),
+			{ Value = value.Value + math.pi * 3 })
+		tw:Play()
+		model:SetAttribute("Pressure", 1)
+		tw.Completed:Wait()
+		busy = false
+	end)
+end
+
+local function setupGauge(model, needle)          -- стрелка манометра: дрожит, после вентиля подскакивает
+	local face = model:FindFirstChild(itemOf(needle.Name) .. "_GaugeFace", true)
+	if not face then return end
+	local n = thinAxis(face)
+	if (needle.Position - face.Position):Dot(n) < 0 then n = -n end   -- нормаль к зрителю
+	local c = face.Position
+	local n0 = needle.CFrame
+	local pressure = 0
+	RunService.Heartbeat:Connect(function(dt)
+		local p = model:GetAttribute("Pressure")
+		if p and p > 0 then
+			pressure = math.min(1, pressure + p * 0.6)
+			model:SetAttribute("Pressure", 0)
+		end
+		pressure = pressure * (1 - dt * 0.12)
+		local t = os.clock()
+		local a = -(0.9 + 2.6 * pressure) + 0.06 * math.sin(t * 9) + 0.03 * math.sin(t * 23)
+		needle.CFrame = CFrame.new(c) * CFrame.fromAxisAngle(n, a + 2.36) * CFrame.new(-c) * n0   -- по часовой от «7 часов»
+	end)
+end
+
 local function decorate(p)
 	if p.Name:match("_Shades?$") or p.Name:match("_Flames$") then
 		local l = Instance.new("PointLight")
 		l.Color, l.Brightness, l.Range, l.Shadows = Color3.fromRGB(255, 190, 120), 1.6, 16, true
 		l.Parent = p
+	elseif p.Name:match("_SmokeOut$") then
+		p.CanCollide = false
+		local sm = Instance.new("Smoke")
+		sm.Color, sm.Opacity, sm.RiseVelocity, sm.Size = Color3.fromRGB(70, 65, 60), 0.25, 4, 2
+		sm.Parent = p
 	elseif p.Name:match("_Fire$") then
 		p.CanCollide = false
 		local f = Instance.new("Fire")
@@ -261,6 +320,14 @@ local function setupModel(model)
 	end
 	for name, kind in pairs(BEHAVIORS) do          -- часы: стрелки и маятник
 		if kind == "hour" and model:FindFirstChild(name, true) then setupClock(model, itemOf(name)) end
+		if kind == "spin" then
+			local b = model:FindFirstChild(name, true)
+			if b then setupSpin(model, b) end
+		end
+		if kind == "gauge" then
+			local b = model:FindFirstChild(name, true)
+			if b then setupGauge(model, b) end
+		end
 		if kind == "press" then
 			local b = model:FindFirstChild(name, true)
 			if b then setupPress(model, b) end
