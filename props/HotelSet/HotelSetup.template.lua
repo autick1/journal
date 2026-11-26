@@ -33,7 +33,7 @@ local BEHAVIORS = {
 }
 
 local LABELS = {
-	Wardrobe = "Шкаф", Dresser = "Комод", Nightstand = "Тумбочка", Door = "Дверь", ReceptionDesk = "Стол",
+	Wardrobe = "Шкаф", Dresser = "Комод", Nightstand = "Тумбочка", Door = "Дверь", ReceptionDesk = "Стол", Locker = "Шкафчик",
 }
 
 local TweenService = game:GetService("TweenService")

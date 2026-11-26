@@ -56,6 +56,7 @@ PALETTE = {
     "Wax":        ((236, 228, 206), "SmoothPlastic", 0, 0, 0.5),
     "Flame":      ((255, 190, 90), "Neon", 0.1, 0, 0.5),
     "Ink":        ((72, 30, 20), "SmoothPlastic", 0, 0, 0.5),
+    "Rust":       ((74, 36, 30), "CorrodedMetal", 0, 0, 0.75),
 }
 
 
@@ -1436,6 +1437,67 @@ def grand_chandelier(it):
         it.tube("Arms", "Wood", catmull([(r * ca, r * sa, zz) for r, zz in prof_s], 5), 0.016, segs=6, r_end=0.011)
 
 
+def locker(it):
+    """Ржавый металлический шкафчик: 2 двери с жалюзи и утопленными ручками, наружные петли,
+    ножки-уголки, внутри полка и штанга. Материал в Roblox — CorrodedMetal (ржавчина)."""
+    W, D = 0.92, 0.5
+    w, y0, y1 = W / 2, -D / 2, D / 2
+    zb, zt = 0.14, 1.84                                  # низ и верх корпуса
+    B, M = "Body", "Rust"
+    t = 0.012                                            # толщина листа
+    # ножки-уголки
+    for sx in (-1, 1):
+        for sy in (-1, 1):
+            x, y = sx * (w - 0.02), sy * (D / 2 - 0.02)
+            it.bx(B, M, sorted((x, x - sx * 0.055)), sorted((y, y - sy * 0.006)), (0.0, zb + 0.02), 0.002)
+            it.bx(B, M, sorted((x, x - sx * 0.006)), sorted((y, y - sy * 0.055)), (0.0, zb + 0.02), 0.002)
+    # корпус из листа
+    it.bx(B, M, (-w, -w + t), (y0, y1), (zb, zt))
+    it.bx(B, M, (w - t, w), (y0, y1), (zb, zt))
+    it.bx(B, M, (-w, w), (y1 - t, y1), (zb, zt))
+    it.bx(B, M, (-w + 0.002, w - 0.002), (y0, y1 - 0.002), (zb, zb + 0.06), 0.003)   # цоколь (не в плоскости стенок)
+    it.bx(B, M, (-w + 0.01, w - 0.01), (y0 - 0.004, y0 + 0.02), (zb, zb + 0.06), 0.003)
+    it.bx(B, M, (-w - 0.012, w + 0.012), (y0 - 0.02, y1 + 0.012), (zt, zt + 0.03), 0.006)   # крышка с отбортовкой
+    it.bx(B, M, (-w + t, w - t), (y0, y1 - t), (zt - 0.012, zt))
+    # рамка проёма
+    it.bx(B, M, (-w, -w + 0.03), (y0 - 0.004, y0 + 0.02), (zb, zt), 0.002)
+    it.bx(B, M, (w - 0.03, w), (y0 - 0.004, y0 + 0.02), (zb, zt), 0.002)
+    it.bx(B, M, (-w, w), (y0 - 0.004, y0 + 0.02), (zt - 0.03, zt), 0.002)
+    # внутри: полка, штанга, рёбра жёсткости
+    it.bx(B, M, (-w + t, w - t), (y0 + 0.03, y1 - t), (1.5, 1.512))
+    it.bx(B, M, (-w + t, w - t), (y0 + 0.03, y1 - t), (zb + 0.06, zb + 0.072))
+    it.cyl("Rod", "Iron", 0.011, W - 0.04, (0, 0.0, 1.42), (0, PI / 2, 0), segs=10)
+    # петли снаружи на боковинах
+    for sx in (-1, 1):
+        for zc in (0.45, 1.55):
+            x = sx * (w + 0.006)
+            it.cyl("Hinges", "Iron", 0.008, 0.1, (x, y0 + 0.004, zc), segs=8)
+            it.bx("Hinges", "Iron", sorted((sx * w, sx * (w + 0.003))), (y0 + 0.004, y0 + 0.05), (zc - 0.045, zc + 0.045), 0.001)
+    # двери
+    zd0, zd1 = zb + 0.065, zt - 0.035
+    for side, name in ((-1, "DoorL"), (1, "DoorR")):
+        xa, xb = (-w + 0.032, -0.004) if side < 0 else (0.004, w - 0.032)
+        yd = y0 - 0.004
+        it.bx(name, M, (xa, xb), (yd - 0.018, yd), (zd0, zd1), 0.004)
+        it.bx(name, M, (xa + 0.015, xb - 0.015), (yd - 0.02, yd - 0.018), (zd0 + 0.015, zd1 - 0.015), 0.002)
+        cx = (xa + xb) / 2
+        lw = (xb - xa) * 0.62
+        for zc in (1.66, zd0 + 0.24):                    # жалюзи: тёмная щель + наклонная планка
+            for k in range(5):
+                zz = zc - 0.09 + k * 0.045
+                it.bx(f"{name}_Vents", "Black", (cx - lw / 2, cx + lw / 2), (yd - 0.0215, yd - 0.0205), (zz - 0.012, zz + 0.006), 0)
+                it.box_at(name, M, (lw, 0.004, 0.026), (cx, yd - 0.026, zz + 0.004), (math.radians(-38), 0, 0), bev=0.0015)
+                for sx in (-1, 1):                       # боковые «щёчки» планки
+                    it.bx(name, M, sorted((cx + sx * lw / 2, cx + sx * (lw / 2 - 0.004))), (yd - 0.033, yd - 0.02),
+                          (zz - 0.012, zz + 0.018), 0.001)
+        # утопленная ручка у притвора
+        hx = xb - 0.075 if side < 0 else xa + 0.075
+        zc = 0.98
+        it.add(f"{name}_Handle", "Iron", rect_ring(hx - 0.028, hx + 0.028, zc - 0.075, zc + 0.075, 0.012, yd - 0.027, yd - 0.02))
+        it.bx(f"{name}_HandleHole", "Black", (hx - 0.016, hx + 0.016), (yd - 0.0215, yd - 0.0205), (zc - 0.063, zc + 0.063), 0)
+        it.behaviors.append((f"{it.name}_{name}", "hinge"))
+
+
 ITEMS = [
     ("Wardrobe", wardrobe), ("Bookcase", bookcase), ("LuggageCart", luggage_cart), ("CoatRack", coat_rack),
     ("Plant", plant), ("Suitcase", lambda it: suitcase(it, "", (0.8, 0.42, 0.5), (0, 0, 0))),
@@ -1446,7 +1508,7 @@ ITEMS = [
     ("Chandelier", chandelier), ("Rug", None), ("Sconce", sconce), ("RoundTable", round_table),
     ("RectTable", rect_table), ("GrandClock", grand_clock), ("WallClock", wall_clock),
     ("FacetClock", facet_clock), ("ReceptionDesk", reception_desk), ("DeskBell", desk_bell_item),
-    ("GrandChandelier", grand_chandelier),
+    ("GrandChandelier", grand_chandelier), ("Locker", locker),
 ]
 RU = {"Wardrobe": "Шкаф", "Bookcase": "Книжный шкаф", "LuggageCart": "Тележка", "CoatRack": "Вешалка",
       "Plant": "Растение", "Suitcase": "Чемодан", "Painting": "Картина", "FloorLamp": "Торшер",
@@ -1457,7 +1519,8 @@ RU = {"Wardrobe": "Шкаф", "Bookcase": "Книжный шкаф", "LuggageCar
       "RectTable": "Столик", "GrandClock": "Резные часы", "WallClock": "Настенные часы",
       "FacetClock": "Часы (12 граней)",
       "ReceptionDesk": "Стол-стойка", "DeskBell": "Звонок портье",
-      "GrandChandelier": "Люстра с абажурами"}
+      "GrandChandelier": "Люстра с абажурами",
+      "Locker": "Металлический шкафчик"}
 
 
 # ----------------------------------------------------------------------------- сборка в Blender
@@ -1478,6 +1541,18 @@ def make_material(key, tex=None):
     if key == "Shade":
         b.inputs["Emission Color"].default_value = (*c, 1)
         b.inputs["Emission Strength"].default_value = 0.6
+    if key == "Rust":                                     # превью ржавчины (в Roblox — материал CorrodedMetal)
+        nt = m.node_tree
+        noise = nt.nodes.new("ShaderNodeTexNoise")
+        noise.inputs["Scale"].default_value = 14.0
+        noise.inputs["Detail"].default_value = 8.0
+        ramp = nt.nodes.new("ShaderNodeValToRGB")
+        ramp.color_ramp.elements[0].position, ramp.color_ramp.elements[1].position = 0.45, 0.62
+        ramp.color_ramp.elements[0].color = (0.011, 0.007, 0.007, 1)
+        ramp.color_ramp.elements[1].color = (0.06, 0.013, 0.008, 1)
+        nt.links.new(noise.outputs["Fac"], ramp.inputs["Fac"])
+        nt.links.new(ramp.outputs["Color"], b.inputs["Base Color"])
+        b.inputs["Metallic"].default_value = 0.4
     if tex is not None:
         t = m.node_tree.nodes.new("ShaderNodeTexImage")
         t.image = tex
@@ -1594,7 +1669,7 @@ ROWS = [["Wardrobe", "Bookcase", "LuggageCart", "CoatRack", "Plant", "Suitcase",
         ["FloorLamp", "TableLamp", "Dresser", "Nightstand", "CoffeeTable", "Bench", "Door"],
         ["Fireplace", "Clock", "Mirror", "LuggageRack", "Curtains", "WallPanel"],
         ["Chandelier", "Sconce", "RoundTable", "RectTable", "Rug", "GrandClock", "WallClock", "FacetClock"],
-        ["ReceptionDesk", "DeskBell", "GrandChandelier"]]
+        ["ReceptionDesk", "DeskBell", "GrandChandelier", "Locker"]]
 
 
 def render(objs_by_item, out):

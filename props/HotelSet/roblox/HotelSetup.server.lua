@@ -43,7 +43,8 @@ local PALETTE = {
 	Rug = { Enum.Material.Fabric, Color3.fromRGB(110, 20, 28), 0, 0 },
 	Wax = { Enum.Material.SmoothPlastic, Color3.fromRGB(236, 228, 206), 0, 0 },
 	Flame = { Enum.Material.Neon, Color3.fromRGB(255, 190, 90), 0.1, 0 },
-	Ink = { Enum.Material.SmoothPlastic, Color3.fromRGB(72, 30, 20), 0, 0 }
+	Ink = { Enum.Material.SmoothPlastic, Color3.fromRGB(72, 30, 20), 0, 0 },
+	Rust = { Enum.Material.CorrodedMetal, Color3.fromRGB(74, 36, 30), 0, 0 }
 }
 
 -- деталь -> ключ палитры
@@ -190,7 +191,18 @@ local PARTS = {
 	["GrandChandelier_Arms"] = "Wood",
 	["GrandChandelier_Sockets"] = "WoodDark",
 	["GrandChandelier_Shades"] = "Shade",
-	["GrandChandelier_ShadeFrames"] = "WoodDark"
+	["GrandChandelier_ShadeFrames"] = "WoodDark",
+	["Locker_Body"] = "Rust",
+	["Locker_Rod"] = "Iron",
+	["Locker_Hinges"] = "Iron",
+	["Locker_DoorL"] = "Rust",
+	["Locker_DoorL_Vents"] = "Black",
+	["Locker_DoorL_Handle"] = "Iron",
+	["Locker_DoorL_HandleHole"] = "Black",
+	["Locker_DoorR"] = "Rust",
+	["Locker_DoorR_Vents"] = "Black",
+	["Locker_DoorR_Handle"] = "Iron",
+	["Locker_DoorR_HandleHole"] = "Black"
 }
 
 -- деталь -> поведение
@@ -219,11 +231,13 @@ local BEHAVIORS = {
 	["ReceptionDesk_DrawerR2"] = "slide",
 	["ReceptionDesk_DrawerC"] = "slide",
 	["ReceptionDesk_BellButton"] = "press",
-	["DeskBell_Button"] = "press"
+	["DeskBell_Button"] = "press",
+	["Locker_DoorL"] = "hinge",
+	["Locker_DoorR"] = "hinge"
 }
 
 local LABELS = {
-	Wardrobe = "Шкаф", Dresser = "Комод", Nightstand = "Тумбочка", Door = "Дверь", ReceptionDesk = "Стол",
+	Wardrobe = "Шкаф", Dresser = "Комод", Nightstand = "Тумбочка", Door = "Дверь", ReceptionDesk = "Стол", Locker = "Шкафчик",
 }
 
 local TweenService = game:GetService("TweenService")
